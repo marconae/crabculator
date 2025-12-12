@@ -1,0 +1,193 @@
+//! Layout management for the Crabculator TUI.
+//!
+//! Provides the main layout constraints for the split-panel interface,
+//! including the command bar at the bottom of the screen.
+
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+
+/// Layout areas for the main UI.
+///
+/// Contains the computed areas for content panels and the command bar.
+#[derive(Debug, Clone, Copy)]
+pub struct LayoutAreas {
+    /// The area for the main content (input and results panels).
+    pub content_area: Rect,
+    /// The area for the command bar at the bottom.
+    pub command_bar: Rect,
+}
+
+/// Creates the main layout with content area and command bar.
+///
+/// The layout divides the terminal into:
+/// - Content area (all but last row): For input and results panels
+/// - Command bar (1 row): Displays available commands at the bottom
+///
+/// # Arguments
+/// * `area` - The total available area to divide
+///
+/// # Returns
+/// A `LayoutAreas` struct containing the computed areas.
+#[must_use]
+pub fn create_main_layout(area: Rect) -> LayoutAreas {
+    let vertical_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),    // Content area takes remaining space
+            Constraint::Length(1), // Command bar is exactly 1 row
+        ]);
+
+    let chunks = vertical_layout.split(area);
+
+    LayoutAreas {
+        content_area: chunks[0],
+        command_bar: chunks[1],
+    }
+}
+
+/// Creates the horizontal panel layout with 80/20 split.
+///
+/// The layout divides the content area into:
+/// - Left panel (80%): Input/expression area
+/// - Right panel (20%): Results area
+#[must_use]
+pub fn create_panel_layout() -> Layout {
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // === Main Layout Tests (Vertical: content area + command bar) ===
+
+    #[test]
+    fn main_layout_creates_two_areas() {
+        let area = Rect::new(0, 0, 100, 50);
+        let areas = create_main_layout(area);
+
+        // Should have content area and command bar
+        assert!(
+            areas.content_area.height > 0,
+            "Content area should have height"
+        );
+        assert!(
+            areas.command_bar.height > 0,
+            "Command bar should have height"
+        );
+    }
+
+    #[test]
+    fn main_layout_command_bar_is_one_row() {
+        let area = Rect::new(0, 0, 100, 50);
+        let areas = create_main_layout(area);
+
+        assert_eq!(
+            areas.command_bar.height, 1,
+            "Command bar should be exactly 1 row"
+        );
+    }
+
+    #[test]
+    fn main_layout_command_bar_at_bottom() {
+        let area = Rect::new(0, 0, 100, 50);
+        let areas = create_main_layout(area);
+
+        assert_eq!(
+            areas.command_bar.y, 49,
+            "Command bar should be at the bottom (y=49 for height 50)"
+        );
+    }
+
+    #[test]
+    fn main_layout_content_area_fills_remaining() {
+        let area = Rect::new(0, 0, 100, 50);
+        let areas = create_main_layout(area);
+
+        assert_eq!(
+            areas.content_area.height, 49,
+            "Content area should be 49 rows (50 - 1 for command bar)"
+        );
+        assert_eq!(areas.content_area.y, 0, "Content area should start at y=0");
+    }
+
+    #[test]
+    fn main_layout_command_bar_full_width() {
+        let area = Rect::new(0, 0, 100, 50);
+        let areas = create_main_layout(area);
+
+        assert_eq!(
+            areas.command_bar.width, 100,
+            "Command bar should span full width"
+        );
+        assert_eq!(areas.command_bar.x, 0, "Command bar should start at x=0");
+    }
+
+    // === Panel Layout Tests (Horizontal: input + results) ===
+
+    #[test]
+    fn panel_layout_creates_two_chunks() {
+        let layout = create_panel_layout();
+        let area = Rect::new(0, 0, 100, 49);
+        let chunks = layout.split(area);
+
+        assert_eq!(chunks.len(), 2, "Layout should create exactly 2 chunks");
+    }
+
+    #[test]
+    fn panel_layout_splits_80_20() {
+        let layout = create_panel_layout();
+        let area = Rect::new(0, 0, 100, 49);
+        let chunks = layout.split(area);
+
+        // Left panel should be 80% of width
+        assert_eq!(chunks[0].width, 80, "Left panel should be 80% width");
+        // Right panel should be 20% of width
+        assert_eq!(chunks[1].width, 20, "Right panel should be 20% width");
+    }
+
+    #[test]
+    fn panel_layout_preserves_height() {
+        let layout = create_panel_layout();
+        let area = Rect::new(0, 0, 100, 49);
+        let chunks = layout.split(area);
+
+        assert_eq!(chunks[0].height, 49, "Left panel should preserve height");
+        assert_eq!(chunks[1].height, 49, "Right panel should preserve height");
+    }
+
+    #[test]
+    fn panel_layout_is_horizontal() {
+        let layout = create_panel_layout();
+        let area = Rect::new(0, 0, 100, 49);
+        let chunks = layout.split(area);
+
+        // Both chunks should be at y=0 (horizontal layout)
+        assert_eq!(chunks[0].y, 0, "Left panel should start at y=0");
+        assert_eq!(chunks[1].y, 0, "Right panel should start at y=0");
+
+        // Right panel should start after left panel
+        assert_eq!(chunks[1].x, 80, "Right panel should start at x=80");
+    }
+
+    // === Layout adapts to terminal resize ===
+
+    #[test]
+    fn layout_adapts_to_terminal_resize() {
+        // Test with different terminal sizes
+        let small = Rect::new(0, 0, 80, 24);
+        let large = Rect::new(0, 0, 200, 100);
+
+        let small_areas = create_main_layout(small);
+        let large_areas = create_main_layout(large);
+
+        // Command bar should always be 1 row
+        assert_eq!(small_areas.command_bar.height, 1);
+        assert_eq!(large_areas.command_bar.height, 1);
+
+        // Content area should adapt
+        assert_eq!(small_areas.content_area.height, 23);
+        assert_eq!(large_areas.content_area.height, 99);
+    }
+}
