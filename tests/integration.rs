@@ -1,0 +1,487 @@
+//! Integration tests for Crabculator.
+//!
+//! These tests verify the complete expression evaluation flow as specified
+//! in the expression-eval capability spec.
+
+use crabculator::app::App;
+use crabculator::editor::Buffer;
+use crabculator::eval::{EvalContext, LineResult, evaluate_all_lines, evaluate_line};
+use evalexpr::Value;
+
+// ============================================================
+// App Lifecycle Tests
+// ============================================================
+
+#[test]
+fn test_app_lifecycle() {
+    let mut app = App::new();
+    assert!(app.running);
+    app.quit();
+    assert!(!app.running);
+}
+
+#[test]
+fn test_app_initializes_with_buffer() {
+    let app = App::new();
+    // Buffer should have at least one line (either from persisted state or empty default)
+    assert!(app.buffer.line_count() >= 1);
+    // Context should be initialized (may have variables from persisted state)
+    let _ = app.context.extract_variables();
+}
+
+// ============================================================
+// Expression Evaluation Integration Tests
+// ============================================================
+
+/// Entering `5 + 3` shows `8` in result panel
+#[test]
+fn test_single_expression_evaluation() {
+    let lines = ["5 + 3"];
+    let results = evaluate_all_lines(lines);
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0], LineResult::Value(Value::Int(8)));
+}
+
+/// Entering `a = 10` shows `10` and stores variable
+#[test]
+fn test_variable_assignment() {
+    let mut context = EvalContext::new();
+    let result = evaluate_line("a = 10", &mut context);
+
+    assert_eq!(
+        result,
+        LineResult::Assignment {
+            name: "a".to_string(),
+            value: Value::Int(10),
+        }
+    );
+    assert_eq!(context.get_variable("a"), Some(&Value::Int(10)));
+}
+
+/// Entering `a * 2` shows `20` (uses stored variable)
+#[test]
+fn test_variable_reference() {
+    let lines = ["a = 10", "a * 2"];
+    let results = evaluate_all_lines(lines);
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[1], LineResult::Value(Value::Int(20)));
+}
+
+/// Entering invalid expression returns error
+#[test]
+fn test_error_detection() {
+    let lines = ["undefined_var + 5"];
+    let results = evaluate_all_lines(lines);
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(results[0], LineResult::Error(_)));
+}
+
+/// Empty lines produce no result
+#[test]
+fn test_empty_line_evaluation() {
+    let lines = [""];
+    let results = evaluate_all_lines(lines);
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0], LineResult::Empty);
+}
+
+// ============================================================
+// Buffer Integration Tests
+// ============================================================
+
+/// Characters inserted at cursor position
+#[test]
+fn test_buffer_character_insertion() {
+    let mut buffer = Buffer::new();
+    buffer.insert_char('5');
+    buffer.insert_char('+');
+    buffer.insert_char('3');
+
+    assert_eq!(buffer.lines()[0], "5+3");
+}
+
+/// Enter creates new line, moves cursor to start of new line
+#[test]
+fn test_buffer_newline_creation() {
+    let mut buffer = Buffer::new();
+    buffer.insert_char('a');
+    buffer.insert_newline();
+    buffer.insert_char('b');
+
+    assert_eq!(buffer.line_count(), 2);
+    assert_eq!(buffer.lines()[0], "a");
+    assert_eq!(buffer.lines()[1], "b");
+    assert_eq!(buffer.cursor().row(), 1);
+    assert_eq!(buffer.cursor().col(), 1);
+}
+
+/// Backspace removes character before cursor
+#[test]
+fn test_buffer_backspace() {
+    let mut buffer = Buffer::new();
+    buffer.insert_char('a');
+    buffer.insert_char('b');
+    buffer.insert_char('c');
+    buffer.delete_char_before();
+
+    assert_eq!(buffer.lines()[0], "ab");
+}
+
+/// Backspace at line start merges with previous line
+#[test]
+fn test_buffer_line_merge() {
+    let mut buffer = Buffer::new();
+    buffer.insert_char('a');
+    buffer.insert_newline();
+    buffer.insert_char('b');
+    buffer.move_cursor_to_line_start();
+    buffer.delete_char_before();
+
+    assert_eq!(buffer.line_count(), 1);
+    assert_eq!(buffer.lines()[0], "ab");
+}
+
+// ============================================================
+// Cursor Navigation Tests
+// ============================================================
+
+/// Cursor navigation moves between lines correctly
+#[test]
+fn test_cursor_navigation() {
+    let mut buffer = Buffer::new();
+    buffer.insert_char('a');
+    buffer.insert_newline();
+    buffer.insert_char('b');
+
+    // Start at end of line 2
+    assert_eq!(buffer.cursor().row(), 1);
+
+    // Move up
+    buffer.move_cursor_up();
+    assert_eq!(buffer.cursor().row(), 0);
+
+    // Move down
+    buffer.move_cursor_down();
+    assert_eq!(buffer.cursor().row(), 1);
+}
+
+#[test]
+fn test_cursor_home_end() {
+    let mut buffer = Buffer::new();
+    buffer.insert_char('a');
+    buffer.insert_char('b');
+    buffer.insert_char('c');
+
+    // Cursor should be at end
+    assert_eq!(buffer.cursor().col(), 3);
+
+    // Move to start
+    buffer.move_cursor_to_line_start();
+    assert_eq!(buffer.cursor().col(), 0);
+
+    // Move to end
+    buffer.move_cursor_to_line_end();
+    assert_eq!(buffer.cursor().col(), 3);
+}
+
+// ============================================================
+// End-to-End Expression Flow Tests
+// ============================================================
+
+/// Complex multi-line calculation with variables
+#[test]
+fn test_multiline_calculation() {
+    let lines = ["base = 100", "rate = 0.15", "base * rate"];
+    let results = evaluate_all_lines(lines);
+
+    assert_eq!(results.len(), 3);
+
+    // base = 100
+    assert!(matches!(&results[0], LineResult::Assignment { name, value }
+        if name == "base" && *value == Value::Int(100)));
+
+    // rate = 0.15
+    assert!(matches!(&results[1], LineResult::Assignment { name, value }
+        if name == "rate" && *value == Value::Float(0.15)));
+
+    // base * rate = 15.0
+    assert_eq!(results[2], LineResult::Value(Value::Float(15.0)));
+}
+
+/// Expressions with parentheses
+#[test]
+fn test_expression_with_parentheses() {
+    let lines = ["(5 + 3) * 2"];
+    let results = evaluate_all_lines(lines);
+
+    assert_eq!(results[0], LineResult::Value(Value::Int(16)));
+}
+
+/// Expressions with built-in functions
+#[test]
+fn test_expression_with_functions() {
+    let lines = ["math::sqrt(16)"];
+    let results = evaluate_all_lines(lines);
+
+    assert_eq!(results[0], LineResult::Value(Value::Float(4.0)));
+}
+
+/// Error in one line doesn't affect other lines
+#[test]
+fn test_error_isolation() {
+    let lines = ["5 + 3", "undefined_var", "10 - 2"];
+    let results = evaluate_all_lines(lines);
+
+    assert_eq!(results[0], LineResult::Value(Value::Int(8)));
+    assert!(matches!(results[1], LineResult::Error(_)));
+    assert_eq!(results[2], LineResult::Value(Value::Int(8)));
+}
+
+// ============================================================
+// State Persistence Integration Tests
+// ============================================================
+
+use crabculator::storage::{PersistedState, load_from_path, save_to_path};
+use std::collections::HashMap;
+use tempfile::tempdir;
+
+/// State persistence roundtrip: save state, reload, verify restored
+///
+/// This test simulates the app lifecycle:
+/// - Start app -> edit buffer -> define variables -> quit -> restart -> state restored
+#[test]
+fn test_state_persistence_roundtrip() {
+    // Create a temporary directory for the state file
+    let dir = tempdir().expect("should create temp dir");
+    let state_file = dir.path().join("state.json");
+
+    // === Simulate first session: user edits buffer and defines variables ===
+
+    // Buffer content representing expressions the user typed
+    let buffer_lines = vec![
+        "price = 100".to_string(),
+        "tax_rate = 0.15".to_string(),
+        "price * tax_rate".to_string(),
+        "total = price + (price * tax_rate)".to_string(),
+    ];
+
+    // Variables that would be defined after evaluating the expressions
+    let mut variables = HashMap::new();
+    variables.insert("price".to_string(), 100.0);
+    variables.insert("tax_rate".to_string(), 0.15);
+    variables.insert("total".to_string(), 115.0);
+
+    // Create state and save (simulates quit)
+    let original_state = PersistedState::new(buffer_lines, variables.clone());
+    save_to_path(&original_state, &state_file).expect("save should succeed");
+
+    // === Simulate restart: load state ===
+
+    let loaded_state = load_from_path(&state_file)
+        .expect("load should succeed")
+        .expect("state file should exist");
+
+    // === Verify buffer content is restored ===
+
+    assert_eq!(
+        loaded_state.buffer_lines.len(),
+        4,
+        "should have 4 lines in buffer"
+    );
+    assert_eq!(loaded_state.buffer_lines[0], "price = 100");
+    assert_eq!(loaded_state.buffer_lines[1], "tax_rate = 0.15");
+    assert_eq!(loaded_state.buffer_lines[2], "price * tax_rate");
+    assert_eq!(
+        loaded_state.buffer_lines[3],
+        "total = price + (price * tax_rate)"
+    );
+
+    // === Verify variables are restored ===
+
+    assert_eq!(loaded_state.variables.len(), 3, "should have 3 variables");
+    assert_eq!(loaded_state.variables.get("price"), Some(&100.0));
+    assert_eq!(loaded_state.variables.get("tax_rate"), Some(&0.15));
+    assert_eq!(loaded_state.variables.get("total"), Some(&115.0));
+
+    // === Verify complete state equality ===
+
+    assert_eq!(
+        original_state, loaded_state,
+        "loaded state should match original"
+    );
+}
+
+/// State persistence with empty state: verify empty state round-trips correctly
+#[test]
+fn test_state_persistence_empty_state() {
+    let dir = tempdir().expect("should create temp dir");
+    let state_file = dir.path().join("state.json");
+
+    // Save empty state (fresh start scenario)
+    let original_state = PersistedState::empty();
+    save_to_path(&original_state, &state_file).expect("save should succeed");
+
+    // Load and verify
+    let loaded_state = load_from_path(&state_file)
+        .expect("load should succeed")
+        .expect("state file should exist");
+
+    assert!(loaded_state.buffer_lines.is_empty());
+    assert!(loaded_state.variables.is_empty());
+    assert_eq!(original_state, loaded_state);
+}
+
+/// State persistence preserves variable precision
+#[test]
+fn test_state_persistence_variable_precision() {
+    let dir = tempdir().expect("should create temp dir");
+    let state_file = dir.path().join("state.json");
+
+    // Use variables with floating point values that need precision
+    let mut variables = HashMap::new();
+    variables.insert("pi".to_string(), std::f64::consts::PI);
+    variables.insert("e".to_string(), std::f64::consts::E);
+    variables.insert("small".to_string(), 0.000_001);
+    variables.insert("large".to_string(), 1_000_000.123_456);
+
+    let original_state = PersistedState::new(vec!["pi = 3.14159...".to_string()], variables);
+    save_to_path(&original_state, &state_file).expect("save should succeed");
+
+    let loaded_state = load_from_path(&state_file)
+        .expect("load should succeed")
+        .expect("state file should exist");
+
+    // Verify precision is maintained
+    let loaded_pi = loaded_state.variables.get("pi").expect("pi should exist");
+    let loaded_e = loaded_state.variables.get("e").expect("e should exist");
+    let loaded_small = loaded_state
+        .variables
+        .get("small")
+        .expect("small should exist");
+    let loaded_large = loaded_state
+        .variables
+        .get("large")
+        .expect("large should exist");
+
+    assert!(
+        (loaded_pi - std::f64::consts::PI).abs() < f64::EPSILON * 10.0,
+        "pi should maintain precision"
+    );
+    assert!(
+        (loaded_e - std::f64::consts::E).abs() < f64::EPSILON * 10.0,
+        "e should maintain precision"
+    );
+    assert!(
+        (loaded_small - 0.000_001).abs() < f64::EPSILON,
+        "small values should maintain precision"
+    );
+    assert!(
+        (loaded_large - 1_000_000.123_456).abs() < 0.000_001,
+        "large values should maintain precision"
+    );
+}
+
+/// Bug test: Variables MUST be stored in app.context after buffer evaluation
+///
+/// This test verifies that when expressions with variable assignments are evaluated,
+/// the variables are stored in the App's `EvalContext` so they can be persisted.
+///
+/// Prior bug: `evaluate_all_lines` created its own local `EvalContext` instead of
+/// using app.context, so variables were lost after rendering.
+#[test]
+fn test_app_context_stores_variables_after_evaluation() {
+    use crabculator::editor::Buffer;
+    use crabculator::eval::{EvalContext, evaluate_all_lines_with_context};
+
+    // Create fresh buffer and context (avoiding persisted state)
+    let mut buffer = Buffer::new();
+    let mut context = EvalContext::new();
+
+    // Simulate user typing: "a = 5"
+    for c in "a = 5".chars() {
+        buffer.insert_char(c);
+    }
+    buffer.insert_newline();
+
+    // Simulate user typing: "b = a + 10"
+    for c in "b = a + 10".chars() {
+        buffer.insert_char(c);
+    }
+
+    // Evaluate the buffer with context (this is what render should do)
+    let _ =
+        evaluate_all_lines_with_context(buffer.lines().iter().map(String::as_str), &mut context);
+
+    // CRITICAL: Variables must be stored in context after evaluation
+    let variables = context.extract_variables();
+
+    assert!(
+        variables.contains_key("a"),
+        "Variable 'a' should be stored in context after evaluation"
+    );
+    assert_eq!(
+        variables.get("a"),
+        Some(&5.0),
+        "Variable 'a' should equal 5.0"
+    );
+    assert!(
+        variables.contains_key("b"),
+        "Variable 'b' should be stored in context after evaluation"
+    );
+    assert_eq!(
+        variables.get("b"),
+        Some(&15.0),
+        "Variable 'b' should equal 15.0"
+    );
+}
+
+/// Bug test: Full persistence flow captures variables from evaluation
+///
+/// This is an end-to-end test that verifies the complete persistence flow:
+/// 1. User types expressions with variable assignments
+/// 2. App evaluates expressions (updating context)
+/// 3. State extraction and persistence correctly captures variables
+#[test]
+fn test_save_state_captures_evaluated_variables() {
+    use crabculator::editor::Buffer;
+    use crabculator::eval::{EvalContext, evaluate_all_lines_with_context};
+
+    let dir = tempdir().expect("should create temp dir");
+    let state_file = dir.path().join("state.json");
+
+    // Create fresh buffer and context
+    let mut buffer = Buffer::new();
+    let mut context = EvalContext::new();
+
+    // Type "x = 42"
+    for c in "x = 42".chars() {
+        buffer.insert_char(c);
+    }
+
+    // Evaluate (this should update context)
+    let _ =
+        evaluate_all_lines_with_context(buffer.lines().iter().map(String::as_str), &mut context);
+
+    // Save state (simulating app.save_state())
+    let state = PersistedState::new(buffer.lines().to_vec(), context.extract_variables());
+    save_to_path(&state, &state_file).expect("save should succeed");
+
+    // Load and verify variables were persisted
+    let loaded = load_from_path(&state_file)
+        .expect("load should succeed")
+        .expect("state should exist");
+
+    assert!(
+        loaded.variables.contains_key("x"),
+        "Variable 'x' must be persisted in state file"
+    );
+    assert_eq!(
+        loaded.variables.get("x"),
+        Some(&42.0),
+        "Variable 'x' should be 42.0 in state file"
+    );
+}
