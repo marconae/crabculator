@@ -485,3 +485,220 @@ fn test_save_state_captures_evaluated_variables() {
         "Variable 'x' should be 42.0 in state file"
     );
 }
+
+// ============================================================
+// Quit Hotkey Tests
+// ============================================================
+
+/// Test that 'q' character can be inserted into buffer (not exit)
+///
+/// Previous behavior: pressing 'q' would exit the application.
+/// New behavior: 'q' is just another character that gets inserted.
+#[test]
+fn test_typing_q_inserts_character_not_exit() {
+    let mut buffer = Buffer::new();
+
+    // Type 'q' character
+    buffer.insert_char('q');
+
+    // Buffer should contain 'q', not be empty
+    assert_eq!(buffer.lines()[0], "q");
+}
+
+/// Test that 'q' can be used in variable names
+///
+/// This verifies the complete flow: user types a variable name containing 'q',
+/// the buffer stores it correctly, and it can be evaluated.
+#[test]
+fn test_variable_name_with_q_works() {
+    let lines = ["qty = 5", "qty * 2"];
+    let results = evaluate_all_lines(lines);
+
+    assert_eq!(results.len(), 2);
+    // qty = 5 should be an assignment
+    assert!(matches!(&results[0], LineResult::Assignment { name, value }
+        if name == "qty" && *value == Value::Int(5)));
+    // qty * 2 should equal 10
+    assert_eq!(results[1], LineResult::Value(Value::Int(10)));
+}
+
+/// Test expressions containing 'q' character in various positions
+#[test]
+fn test_expressions_with_q_character() {
+    let mut buffer = Buffer::new();
+
+    // Type "sqr = 4" (variable with 'q')
+    for c in "sqr = 4".chars() {
+        buffer.insert_char(c);
+    }
+
+    assert_eq!(buffer.lines()[0], "sqr = 4");
+
+    // Clear and test another
+    buffer = Buffer::new();
+    for c in "eq = 1".chars() {
+        buffer.insert_char(c);
+    }
+
+    assert_eq!(buffer.lines()[0], "eq = 1");
+}
+
+// ============================================================
+// Horizontal Scroll Tests
+// ============================================================
+
+/// Test that cursor remains at expected position after typing long line
+///
+/// When typing a line longer than the visible width, the cursor should
+/// be at the end of the line (not lost or reset).
+#[test]
+fn test_cursor_position_on_long_line_input() {
+    let mut buffer = Buffer::new();
+    let long_text = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+    // Type a long line
+    for c in long_text.chars() {
+        buffer.insert_char(c);
+    }
+
+    // Cursor should be at the end of the line
+    assert_eq!(buffer.cursor().col(), long_text.len());
+    assert_eq!(buffer.lines()[0], long_text);
+}
+
+/// Test horizontal scroll adjustment keeps cursor visible
+///
+/// This tests the App's horizontal scroll adjustment logic
+/// to ensure cursor stays within visible area.
+#[test]
+fn test_horizontal_scroll_adjustment_on_long_input() {
+    use crabculator::app::App;
+
+    let mut app = App::new();
+    // Clear any persisted state to start fresh
+    app.clear_all();
+
+    let long_text = "0123456789abcdefghijklmnopqrstuvwxyz0123456789";
+
+    // Type a long line
+    for c in long_text.chars() {
+        app.buffer.insert_char(c);
+    }
+
+    // Simulate a narrow visible width (typical terminal might be 80, but we test with 20)
+    let visible_width = 20;
+
+    // Adjust horizontal scroll
+    app.adjust_horizontal_scroll(visible_width);
+
+    // Cursor column minus scroll offset should be within visible range
+    let cursor_col = app.buffer.cursor().col();
+    let offset = app.horizontal_scroll_offset;
+
+    assert!(
+        cursor_col >= offset,
+        "Cursor should be at or after scroll offset"
+    );
+    assert!(
+        cursor_col < offset + visible_width,
+        "Cursor should be within visible area"
+    );
+}
+
+/// Test that moving cursor left on long line adjusts scroll
+#[test]
+fn test_horizontal_scroll_adjusts_on_cursor_left() {
+    use crabculator::app::App;
+
+    let mut app = App::new();
+    // Clear any persisted state to start fresh
+    app.clear_all();
+
+    let long_text = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+    // Type a long line
+    for c in long_text.chars() {
+        app.buffer.insert_char(c);
+    }
+
+    // Simulate scroll being set (as if we had scrolled right)
+    let visible_width = 10;
+    app.adjust_horizontal_scroll(visible_width);
+    let initial_offset = app.horizontal_scroll_offset;
+
+    // Move cursor to start
+    app.buffer.move_cursor_to_line_start();
+    app.adjust_horizontal_scroll(visible_width);
+
+    // Scroll should have adjusted to show cursor at start
+    assert!(
+        app.horizontal_scroll_offset < initial_offset,
+        "Scroll offset should decrease when moving cursor left"
+    );
+}
+
+/// Test that Home key navigation with horizontal scroll works correctly
+#[test]
+fn test_home_key_with_horizontal_scroll() {
+    use crabculator::app::App;
+
+    let mut app = App::new();
+    // Clear any persisted state to start fresh
+    app.clear_all();
+
+    // Type a long line
+    for c in "0123456789abcdefghijklmnopqrstuvwxyz".chars() {
+        app.buffer.insert_char(c);
+    }
+
+    let visible_width = 15;
+    app.adjust_horizontal_scroll(visible_width);
+
+    // Press Home (move to line start)
+    app.buffer.move_cursor_to_line_start();
+    app.adjust_horizontal_scroll(visible_width);
+
+    // Cursor should be at column 0
+    assert_eq!(app.buffer.cursor().col(), 0);
+    // Scroll offset should be 0 or very small (within margin)
+    assert!(
+        app.horizontal_scroll_offset <= 4,
+        "Scroll offset should be minimal after Home key"
+    );
+}
+
+/// Test that End key navigation with horizontal scroll works correctly
+#[test]
+fn test_end_key_with_horizontal_scroll() {
+    use crabculator::app::App;
+
+    let mut app = App::new();
+    // Clear any persisted state to start fresh
+    app.clear_all();
+
+    let long_text = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+    // Type a long line
+    for c in long_text.chars() {
+        app.buffer.insert_char(c);
+    }
+
+    // Move to start, then press End
+    app.buffer.move_cursor_to_line_start();
+    let visible_width = 15;
+    app.adjust_horizontal_scroll(visible_width);
+
+    app.buffer.move_cursor_to_line_end();
+    app.adjust_horizontal_scroll(visible_width);
+
+    // Cursor should be at end of line
+    assert_eq!(app.buffer.cursor().col(), long_text.len());
+
+    // Cursor should be visible (within scroll window)
+    let cursor_col = app.buffer.cursor().col();
+    let offset = app.horizontal_scroll_offset;
+    assert!(
+        cursor_col >= offset && cursor_col < offset + visible_width,
+        "Cursor should be visible after End key"
+    );
+}

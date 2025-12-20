@@ -16,7 +16,7 @@ use ratatui::{
 
 use crate::editor::Buffer;
 use crate::eval::{EvalError, LineResult, evaluate_all_lines};
-use crate::ui::highlight::highlight_line;
+use crate::ui::highlight::{highlight_line, highlight_line_with_offset};
 
 /// Formats a `LineResult` for display in the result panel.
 ///
@@ -300,12 +300,14 @@ pub fn build_visible_input_lines_with_highlight<'a>(
 /// Builds visible result lines with scrolling and current line highlighting.
 ///
 /// Combines scrolling support with current line highlighting for the results panel.
+/// Lines are padded to fill the panel width for full-width highlighting.
 ///
 /// # Arguments
 /// * `results` - The evaluation results to display
 /// * `scroll_offset` - The first visible line index (0-based)
 /// * `visible_height` - The number of visible lines in the viewport
 /// * `current_row` - The row index where the cursor is positioned (0-indexed)
+/// * `panel_width` - The width of the panel (excluding borders) for full-width highlighting
 ///
 /// # Returns
 /// A vector of styled `Line` objects for the visible portion only.
@@ -315,6 +317,7 @@ pub fn build_visible_result_lines_with_highlight(
     scroll_offset: usize,
     visible_height: usize,
     current_row: usize,
+    panel_width: usize,
 ) -> Vec<Line<'_>> {
     let highlight_style = current_line_highlight_style();
 
@@ -329,10 +332,22 @@ pub fn build_visible_result_lines_with_highlight(
             let actual_idx = start + visible_idx;
             let is_current_line = actual_idx == current_row;
 
-            let mut line = format_result(result).map_or_else(
-                || Line::from(""),
-                |text| Line::from(Span::styled(text, Style::default().fg(Color::Green))),
-            );
+            let text = format_result(result).unwrap_or_default();
+            let content_width = text.len();
+
+            // Build spans with padding for full-width highlight
+            let mut spans = if text.is_empty() {
+                vec![]
+            } else {
+                vec![Span::styled(text, Style::default().fg(Color::Green))]
+            };
+
+            if is_current_line && content_width < panel_width {
+                let padding = " ".repeat(panel_width - content_width);
+                spans.push(Span::raw(padding));
+            }
+
+            let mut line = Line::from(spans);
 
             if is_current_line {
                 line = line.style(highlight_style);
@@ -543,6 +558,69 @@ fn build_error_spans<'a>(line_text: &'a str, error: &EvalError) -> Vec<Span<'a>>
     )
 }
 
+/// Builds spans for a line with error highlighting and horizontal offset support.
+///
+/// If the error has a span, only that portion is underlined.
+/// Otherwise, the entire line is underlined.
+/// The output is sliced to show only the visible portion based on horizontal offset.
+///
+/// # Arguments
+/// * `line_text` - The full line text
+/// * `error` - The evaluation error with optional span information
+/// * `horizontal_offset` - The first visible column index (0-based)
+/// * `visible_width` - The number of visible columns
+fn build_error_spans_with_offset<'a>(
+    line_text: &'a str,
+    error: &EvalError,
+    horizontal_offset: usize,
+    visible_width: usize,
+) -> Vec<Span<'a>> {
+    let error_style = Style::default()
+        .fg(Color::Red)
+        .add_modifier(Modifier::UNDERLINED);
+
+    // Calculate the visible slice of the line
+    let start_col = horizontal_offset.min(line_text.len());
+    let end_col = (horizontal_offset + visible_width).min(line_text.len());
+    let visible_text = &line_text[start_col..end_col];
+
+    error.span().map_or_else(
+        // No span available, underline entire visible portion
+        || vec![Span::styled(visible_text, error_style)],
+        |span| {
+            // Adjust span coordinates relative to the visible window
+            let span_start = span.start.saturating_sub(horizontal_offset);
+            let span_end = span.end.saturating_sub(horizontal_offset);
+
+            // Clamp to visible bounds
+            let visible_span_start = span_start.min(visible_text.len());
+            let visible_span_end = span_end.min(visible_text.len()).max(visible_span_start);
+
+            let mut spans = Vec::new();
+
+            // Text before error
+            if visible_span_start > 0 {
+                spans.push(Span::raw(&visible_text[..visible_span_start]));
+            }
+
+            // Error portion with underline
+            if visible_span_start < visible_span_end {
+                spans.push(Span::styled(
+                    &visible_text[visible_span_start..visible_span_end],
+                    error_style,
+                ));
+            }
+
+            // Text after error
+            if visible_span_end < visible_text.len() {
+                spans.push(Span::raw(&visible_text[visible_span_end..]));
+            }
+
+            spans
+        },
+    )
+}
+
 /// Builds styled text lines for the input panel with line number gutter.
 ///
 /// Handles:
@@ -604,6 +682,7 @@ pub fn build_input_lines_with_gutter<'a>(
 /// Builds visible input lines with scrolling, highlighting, and line number gutter.
 ///
 /// This combines scrolling, current line highlighting, and line numbers.
+/// Lines are padded to fill the panel width for full-width highlighting.
 ///
 /// # Arguments
 /// * `lines` - The buffer lines to render
@@ -611,6 +690,8 @@ pub fn build_input_lines_with_gutter<'a>(
 /// * `scroll_offset` - The first visible line index (0-based)
 /// * `visible_height` - The number of visible lines in the viewport
 /// * `current_row` - The row index where the cursor is positioned (0-indexed)
+/// * `horizontal_scroll_offset` - The first visible column index (0-based)
+/// * `visible_width` - The number of visible columns in the viewport (including gutter)
 ///
 /// # Returns
 /// A tuple of (styled lines, gutter width) for rendering.
@@ -621,6 +702,8 @@ pub fn build_visible_input_lines_with_gutter<'a>(
     scroll_offset: usize,
     visible_height: usize,
     current_row: usize,
+    horizontal_scroll_offset: usize,
+    visible_width: usize,
 ) -> (Vec<Line<'a>>, usize) {
     let gutter_width = calculate_gutter_width(lines.len());
     let gutter_style_val = gutter_style();
@@ -630,6 +713,9 @@ pub fn build_visible_input_lines_with_gutter<'a>(
     // Calculate the range of lines to render
     let start = scroll_offset.min(lines.len());
     let end = (scroll_offset + visible_height).min(lines.len());
+
+    // Calculate content width (visible width minus gutter)
+    let content_width = visible_width.saturating_sub(gutter_width);
 
     for (i, line_text) in lines.iter().enumerate().take(end).skip(start) {
         let line_number = i + 1; // 1-based line numbers
@@ -641,14 +727,30 @@ pub fn build_visible_input_lines_with_gutter<'a>(
         let line_num_span = Span::styled(line_num_str, gutter_style_val);
 
         // Build the main line with potential error or syntax highlighting
+        // Note: We need to highlight the visible portion only
         let content_spans = match result {
-            Some(LineResult::Error(err)) => build_error_spans(line_text, err),
-            _ => highlight_line(line_text),
+            Some(LineResult::Error(err)) => build_error_spans_with_offset(
+                line_text,
+                err,
+                horizontal_scroll_offset,
+                content_width,
+            ),
+            _ => highlight_line_with_offset(line_text, horizontal_scroll_offset, content_width),
         };
 
         // Combine line number and content
         let mut all_spans = vec![line_num_span];
         all_spans.extend(content_spans);
+
+        // Calculate total width of spans and add padding for full-width highlight
+        if is_current_line {
+            let spans_width: usize = all_spans.iter().map(|s| s.content.len()).sum();
+            if spans_width < visible_width {
+                let padding = " ".repeat(visible_width - spans_width);
+                all_spans.push(Span::raw(padding));
+            }
+        }
+
         let mut styled_line = Line::from(all_spans);
 
         // Apply current line highlight
@@ -673,18 +775,94 @@ pub fn build_visible_input_lines_with_gutter<'a>(
     (output, gutter_width)
 }
 
+/// Determines if the terminal likely supports emoji rendering.
+///
+/// Uses the `TERM` environment variable to heuristically detect modern terminals
+/// that typically support Unicode emoji. Falls back to `false` for unknown terminals.
+///
+/// # Returns
+/// `true` if the terminal likely supports emoji, `false` otherwise
+#[must_use]
+fn terminal_supports_emoji() -> bool {
+    let term = std::env::var("TERM").unwrap_or_default();
+    term_value_supports_emoji(&term)
+}
+
+/// Checks if a given TERM value indicates emoji support.
+///
+/// This is the core logic for terminal emoji detection, extracted to enable
+/// testing without environment variable manipulation.
+///
+/// # Arguments
+/// * `term` - The TERM environment variable value to check
+///
+/// # Returns
+/// `true` if the terminal type likely supports emoji, `false` otherwise
+#[must_use]
+fn term_value_supports_emoji(term: &str) -> bool {
+    let term = term.to_lowercase();
+
+    // Modern terminals that typically support emoji
+    term.contains("xterm")
+        || term.contains("256color")
+        || term.contains("kitty")
+        || term.contains("alacritty")
+        || term.contains("iterm")
+        || term.contains("tmux")
+        || term.contains("screen")
+        || term.contains("vte")
+        || term.contains("gnome")
+        || term.contains("konsole")
+}
+
+/// Returns the branded title for the calculator panel.
+///
+/// Shows the title with crab emoji when the terminal supports it,
+/// otherwise falls back to plain text without the emoji.
+///
+/// # Returns
+/// The title string with or without emoji based on terminal capabilities
+#[must_use]
+fn calculator_panel_title() -> &'static str {
+    if terminal_supports_emoji() {
+        "🦀CrabCalculator"
+    } else {
+        "CrabCalculator"
+    }
+}
+
+/// Returns the calculator panel title based on explicit emoji support flag.
+///
+/// This is the core logic for title generation, extracted to enable testing
+/// without environment variable manipulation.
+///
+/// # Arguments
+/// * `supports_emoji` - Whether emoji should be included in the title
+///
+/// # Returns
+/// The title string with or without emoji
+#[cfg(test)]
+#[must_use]
+const fn calculator_panel_title_with_emoji_support(supports_emoji: bool) -> &'static str {
+    if supports_emoji {
+        "🦀CrabCalculator"
+    } else {
+        "CrabCalculator"
+    }
+}
+
 /// Creates a Block widget for the input panel with rounded borders and dark grey styling.
 ///
 /// # Returns
 /// A Block configured with:
-/// - Title "Input"
+/// - Branded title with emoji (or without if emoji unsupported)
 /// - All borders enabled
 /// - Rounded border type
 /// - Dark grey border color
 #[must_use]
 pub fn input_panel_block() -> Block<'static> {
     Block::default()
-        .title("Input")
+        .title(calculator_panel_title())
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(Color::DarkGray))
@@ -694,14 +872,14 @@ pub fn input_panel_block() -> Block<'static> {
 ///
 /// # Returns
 /// A Block configured with:
-/// - Title "Results"
+/// - Title "Memory"
 /// - All borders enabled
 /// - Rounded border type
 /// - Dark grey border color
 #[must_use]
 pub fn result_panel_block() -> Block<'static> {
     Block::default()
-        .title("Results")
+        .title("Memory")
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(Color::DarkGray))
@@ -715,7 +893,14 @@ pub fn result_panel_block() -> Block<'static> {
 /// * `area` - The area to render the panel in
 /// * `buffer` - The text buffer containing input lines
 /// * `scroll_offset` - The first visible line index (0-based)
-pub fn render_input_panel(frame: &mut Frame, area: Rect, buffer: &Buffer, scroll_offset: usize) {
+/// * `horizontal_scroll_offset` - The first visible column index (0-based)
+pub fn render_input_panel(
+    frame: &mut Frame,
+    area: Rect,
+    buffer: &Buffer,
+    scroll_offset: usize,
+    horizontal_scroll_offset: usize,
+) {
     // Evaluate all lines to get results
     let results = evaluate_all_lines(buffer.lines().iter().map(String::as_str));
 
@@ -732,6 +917,8 @@ pub fn render_input_panel(frame: &mut Frame, area: Rect, buffer: &Buffer, scroll
         scroll_offset,
         visible_height,
         cursor_row,
+        horizontal_scroll_offset,
+        area.width.saturating_sub(2) as usize, // visible_width minus borders
     );
 
     // Create the paragraph widget with rounded borders and dark grey styling
@@ -754,11 +941,12 @@ pub fn render_input_panel(frame: &mut Frame, area: Rect, buffer: &Buffer, scroll
         }
     }
 
-    // Position cursor accounting for border (1 pixel) and gutter width
+    // Position cursor accounting for border (1 pixel), gutter width, and horizontal scroll
+    let adjusted_cursor_col = cursor_col.saturating_sub(horizontal_scroll_offset);
     let cursor_x = area.x
         + 1
         + u16::try_from(gutter_width).unwrap_or(0)
-        + u16::try_from(cursor_col).unwrap_or(0);
+        + u16::try_from(adjusted_cursor_col).unwrap_or(0);
     let cursor_y = area.y + 1 + u16::try_from(actual_row).unwrap_or(0);
 
     // Only set cursor if it's within the visible area
@@ -789,11 +977,15 @@ pub fn render_result_panel(
     // Calculate visible height (area height minus borders)
     let visible_height = area.height.saturating_sub(2) as usize;
 
+    // Calculate panel width (area width minus borders)
+    let panel_width = area.width.saturating_sub(2) as usize;
+
     let styled_lines = build_visible_result_lines_with_highlight(
         results,
         scroll_offset,
         visible_height,
         current_row,
+        panel_width,
     );
 
     // Create the paragraph widget with rounded borders and dark grey styling
@@ -813,9 +1005,9 @@ pub fn build_command_bar_text<'a>() -> Line<'a> {
         .add_modifier(Modifier::BOLD);
 
     Line::from(vec![
-        Span::styled("q", key_style),
+        Span::styled("CTRL+Q", key_style),
         Span::raw(": quit  "),
-        Span::styled("c", key_style),
+        Span::styled("CTRL+R", key_style),
         Span::raw(": clear  "),
         Span::styled("↑↓", key_style),
         Span::raw(": history"),
@@ -824,7 +1016,7 @@ pub fn build_command_bar_text<'a>() -> Line<'a> {
 
 /// Renders the command bar at the bottom of the screen.
 ///
-/// Displays available keyboard commands: "q: quit  c: clear  ↑↓: history"
+/// Displays available keyboard commands: "CTRL+Q: quit  CTRL+R: clear  ↑↓: history"
 ///
 /// # Arguments
 /// * `frame` - The ratatui Frame to render to
@@ -1484,7 +1676,7 @@ mod tests {
         let results: Vec<LineResult> = (0..50).map(|_| LineResult::Empty).collect();
 
         let (output, gutter_width) =
-            build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 0);
+            build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 0, 0, 80);
 
         // Should return only 10 visible lines
         assert_eq!(output.len(), 10);
@@ -1498,7 +1690,7 @@ mod tests {
         let lines: Vec<String> = (0..20).map(|i| format!("line {i}")).collect();
         let results: Vec<LineResult> = (0..20).map(|_| LineResult::Empty).collect();
 
-        let (output, _) = build_visible_input_lines_with_gutter(&lines, &results, 10, 5, 12);
+        let (output, _) = build_visible_input_lines_with_gutter(&lines, &results, 10, 5, 12, 0, 80);
 
         // Should return 5 lines starting at offset 10
         assert_eq!(output.len(), 5);
@@ -1515,7 +1707,7 @@ mod tests {
         let lines = vec!["line 1".to_string(), "line 2".to_string()];
         let results = vec![LineResult::Empty, LineResult::Empty];
 
-        let (output, _) = build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 1);
+        let (output, _) = build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 1, 0, 80);
 
         // First line should not be highlighted
         assert!(output[0].style.bg.is_none());
@@ -1569,8 +1761,8 @@ mod tests {
         let text = build_command_bar_text();
         let text_str = text.to_string();
         assert!(
-            text_str.contains('q') && text_str.contains("quit"),
-            "Command bar should contain 'q: quit'"
+            text_str.contains("CTRL+Q") && text_str.contains("quit"),
+            "Command bar should contain 'CTRL+Q: quit'"
         );
     }
 
@@ -1579,8 +1771,8 @@ mod tests {
         let text = build_command_bar_text();
         let text_str = text.to_string();
         assert!(
-            text_str.contains('c') && text_str.contains("clear"),
-            "Command bar should contain 'c: clear'"
+            text_str.contains("CTRL+R") && text_str.contains("clear"),
+            "Command bar should contain 'CTRL+R: clear'"
         );
     }
 
@@ -1591,6 +1783,246 @@ mod tests {
         assert!(
             text_str.contains("↑↓") && text_str.contains("history"),
             "Command bar should contain '↑↓: history'"
+        );
+    }
+
+    // ==========================================================================
+    // Panel Title Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_terminal_supports_emoji_with_xterm() {
+        assert!(
+            term_value_supports_emoji("xterm-256color"),
+            "xterm-256color should support emoji"
+        );
+    }
+
+    #[test]
+    fn test_terminal_supports_emoji_with_kitty() {
+        assert!(
+            term_value_supports_emoji("xterm-kitty"),
+            "kitty should support emoji"
+        );
+    }
+
+    #[test]
+    fn test_terminal_supports_emoji_with_alacritty() {
+        assert!(
+            term_value_supports_emoji("alacritty"),
+            "alacritty should support emoji"
+        );
+    }
+
+    #[test]
+    fn test_terminal_supports_emoji_with_tmux() {
+        assert!(
+            term_value_supports_emoji("tmux-256color"),
+            "tmux should support emoji"
+        );
+    }
+
+    #[test]
+    fn test_terminal_supports_emoji_with_unknown_term() {
+        assert!(
+            !term_value_supports_emoji("dumb"),
+            "dumb terminal should not support emoji"
+        );
+    }
+
+    #[test]
+    fn test_terminal_supports_emoji_with_empty_term() {
+        assert!(
+            !term_value_supports_emoji(""),
+            "empty TERM should not support emoji"
+        );
+    }
+
+    #[test]
+    fn test_terminal_supports_emoji_case_insensitive() {
+        // Test uppercase
+        assert!(
+            term_value_supports_emoji("XTERM-256COLOR"),
+            "TERM check should be case-insensitive"
+        );
+    }
+
+    #[test]
+    fn test_calculator_panel_title_with_emoji_support() {
+        let title = calculator_panel_title_with_emoji_support(true);
+        assert_eq!(
+            title, "🦀CrabCalculator",
+            "Title should include crab emoji when terminal supports it"
+        );
+    }
+
+    #[test]
+    fn test_calculator_panel_title_without_emoji_support() {
+        let title = calculator_panel_title_with_emoji_support(false);
+        assert_eq!(
+            title, "CrabCalculator",
+            "Title should not include emoji when terminal doesn't support it"
+        );
+    }
+
+    #[test]
+    fn test_calculator_panel_title_no_space_between_emoji_and_text() {
+        let title = calculator_panel_title_with_emoji_support(true);
+        // Verify emoji is directly adjacent to text (no space)
+        assert!(
+            title.starts_with("🦀C"),
+            "Emoji should be directly adjacent to 'C' without space"
+        );
+        assert!(
+            !title.contains("🦀 "),
+            "There should be no space after the emoji"
+        );
+    }
+
+    // ==========================================================================
+    // Full-Width Highlighting Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_build_visible_result_lines_with_highlight_pads_to_panel_width() {
+        let results = vec![
+            LineResult::Value(Value::Int(42)), // "42" is 2 chars
+            LineResult::Value(Value::Int(100)),
+        ];
+        let current_row = 0;
+        let panel_width = 20;
+
+        let output =
+            build_visible_result_lines_with_highlight(&results, 0, 10, current_row, panel_width);
+
+        // The first line (current row) should have spans totaling panel_width
+        // "42" (2 chars) + padding (18 chars) = 20 chars
+        let first_line = &output[0];
+        let total_content_len: usize = first_line.spans.iter().map(|span| span.content.len()).sum();
+        assert_eq!(
+            total_content_len, panel_width,
+            "Highlighted line should be padded to panel width"
+        );
+    }
+
+    #[test]
+    fn test_build_visible_result_lines_with_highlight_non_current_not_padded() {
+        let results = vec![
+            LineResult::Value(Value::Int(42)),
+            LineResult::Value(Value::Int(100)),
+        ];
+        let current_row = 0;
+        let panel_width = 20;
+
+        let output =
+            build_visible_result_lines_with_highlight(&results, 0, 10, current_row, panel_width);
+
+        // The second line (not current row) should NOT be padded
+        let second_line = &output[1];
+        let total_content_len: usize = second_line
+            .spans
+            .iter()
+            .map(|span| span.content.len())
+            .sum();
+        // "100" is 3 chars, should not be padded to 20
+        assert!(
+            total_content_len < panel_width,
+            "Non-highlighted line should not be padded"
+        );
+    }
+
+    #[test]
+    fn test_build_visible_result_lines_with_highlight_empty_line_padded() {
+        let results = vec![LineResult::Empty];
+        let current_row = 0;
+        let panel_width = 15;
+
+        let output =
+            build_visible_result_lines_with_highlight(&results, 0, 10, current_row, panel_width);
+
+        // Empty line when current should be padded to full width
+        let first_line = &output[0];
+        // Empty lines should still have the highlight style applied
+        assert!(
+            first_line.style.bg.is_some(),
+            "Empty current line should have highlight"
+        );
+    }
+
+    #[test]
+    fn test_build_visible_input_lines_with_highlight_applies_style_to_full_line() {
+        let lines = vec!["5 + 3".to_string(), "10 * 2".to_string()];
+        let results = vec![
+            LineResult::Value(Value::Int(8)),
+            LineResult::Value(Value::Int(20)),
+        ];
+        let current_row = 0;
+
+        let output = build_visible_input_lines_with_highlight(&lines, &results, 0, 10, current_row);
+
+        // Verify the line style has background color applied
+        // This means the highlight style covers the entire line, not just content
+        assert!(
+            output[0].style.bg.is_some(),
+            "Current line should have background highlight style"
+        );
+        // The style should be the current line highlight style (subtle gray)
+        let expected_style = current_line_highlight_style();
+        assert_eq!(
+            output[0].style.bg, expected_style.bg,
+            "Line should use the current line highlight background"
+        );
+    }
+
+    #[test]
+    fn test_build_visible_input_lines_with_highlight_style_spans_full_width() {
+        // When Line has a style, ratatui applies it to the full line width
+        // We verify the style is set on the Line itself, not individual spans
+        let lines = vec!["x".to_string()];
+        let results = vec![LineResult::Value(Value::Int(1))];
+        let current_row = 0;
+
+        let output = build_visible_input_lines_with_highlight(&lines, &results, 0, 10, current_row);
+
+        // The Line's style (not span's style) determines full-width highlight
+        assert!(
+            output[0].style.bg.is_some(),
+            "Line style should have background for full-width highlight"
+        );
+    }
+
+    #[test]
+    fn test_build_visible_result_lines_with_highlight_with_large_panel_width() {
+        let results = vec![LineResult::Value(Value::Int(1))];
+        let current_row = 0;
+        let panel_width = 100;
+
+        let output =
+            build_visible_result_lines_with_highlight(&results, 0, 10, current_row, panel_width);
+
+        let first_line = &output[0];
+        let total_content_len: usize = first_line.spans.iter().map(|span| span.content.len()).sum();
+        assert_eq!(
+            total_content_len, panel_width,
+            "Line should be padded to full large panel width"
+        );
+    }
+
+    #[test]
+    fn test_build_visible_result_lines_with_highlight_content_equals_panel_width() {
+        // Edge case: content is exactly panel width, no padding needed
+        let results = vec![LineResult::Value(Value::Int(12345))];
+        let current_row = 0;
+        let panel_width = 5; // "12345" is exactly 5 chars
+
+        let output =
+            build_visible_result_lines_with_highlight(&results, 0, 10, current_row, panel_width);
+
+        let first_line = &output[0];
+        let total_content_len: usize = first_line.spans.iter().map(|span| span.content.len()).sum();
+        assert_eq!(
+            total_content_len, panel_width,
+            "When content equals panel width, total should still equal panel width"
         );
     }
 }

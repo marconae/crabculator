@@ -22,13 +22,10 @@ fn main() -> io::Result<()> {
             let mut should_save = false;
 
             match key.code {
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                KeyCode::Char('c' | 'q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     app.quit();
                 }
-                KeyCode::Char('q') if key.modifiers.is_empty() => {
-                    app.quit();
-                }
-                KeyCode::Char('c') if key.modifiers.is_empty() => {
+                KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     app.clear_all();
                     should_save = true;
                 }

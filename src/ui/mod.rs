@@ -38,6 +38,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // Split content area into input and results panels (80/20)
     let panels = create_panel_layout().split(areas.content_area);
 
+    // Calculate visible dimensions (area minus borders)
+    let visible_height = panels[0].height.saturating_sub(2) as usize;
+    let visible_width = panels[0].width.saturating_sub(2) as usize;
+
+    // Adjust scroll offsets to keep cursor visible
+    app.adjust_scroll(visible_height);
+    app.adjust_horizontal_scroll(visible_width);
+
     // Evaluate all lines using app's context so variables are persisted
     let results = evaluate_all_lines_with_context(
         app.buffer.lines().iter().map(String::as_str),
@@ -48,7 +56,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     let current_row = app.buffer.cursor().row();
 
     // Render input panel with buffer content, error highlighting, and current line highlighting
-    render_input_panel(frame, panels[0], &app.buffer, app.scroll_offset);
+    render_input_panel(
+        frame,
+        panels[0],
+        &app.buffer,
+        app.scroll_offset,
+        app.horizontal_scroll_offset,
+    );
 
     // Render result panel with evaluation results and current line highlighting
     render_result_panel(frame, panels[1], &results, current_row, app.scroll_offset);
