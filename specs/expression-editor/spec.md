@@ -105,3 +105,65 @@ The editor SHALL display a visible cursor indicating the current editing positio
 - **WHEN** the editor panel is rendered
 - **THEN** a cursor indicator is shown at the current cursor position
 - **AND** the cursor is visually distinct (e.g., block or line cursor)
+
+### Requirement: Line Numbers
+
+Each line in the editor SHALL display a line number in a gutter area.
+
+#### Scenario: Line numbers render for all lines
+
+- **WHEN** the editor contains N lines
+- **THEN** numbers 1 through N appear in the gutter
+- **AND** numbers are right-aligned within the gutter
+
+#### Scenario: Line numbers use subtle styling
+
+- **WHEN** viewing line numbers
+- **THEN** line numbers display in dimmed foreground color
+- **AND** line number background matches the content area background
+
+### Requirement: Syntax Highlighting
+
+Expression input SHALL be syntax-highlighted to improve readability.
+
+#### Scenario: Variables display in cyan
+
+- **WHEN** an expression contains variable names
+- **THEN** variable names render in cyan color
+
+#### Scenario: Numbers display in default color
+
+- **WHEN** an expression contains numeric literals
+- **THEN** numbers render in white/default color
+
+#### Scenario: Operators display dimmed
+
+- **WHEN** an expression contains operators (+, -, *, /, %, ^, =)
+- **THEN** operators render in dimmed/grey color
+
+### Requirement: Horizontal Viewport Scrolling
+
+The editor SHALL keep the cursor horizontally visible by scrolling the viewport when the cursor moves beyond the visible area.
+
+#### Scenario: Cursor moves beyond right edge
+
+- **WHEN** the cursor column exceeds the visible width
+- **THEN** the viewport scrolls right to keep the cursor visible
+- **AND** the cursor appears within the visible area
+
+#### Scenario: Cursor moves before left edge
+
+- **WHEN** the cursor column is before the horizontal scroll offset
+- **THEN** the viewport scrolls left to keep the cursor visible
+- **AND** the cursor appears within the visible area
+
+#### Scenario: Cursor within visible area
+
+- **WHEN** the cursor column is within the visible horizontal range
+- **THEN** the horizontal scroll offset remains unchanged
+
+#### Scenario: Long line input
+
+- **WHEN** the user types characters that extend beyond the viewport width
+- **THEN** the viewport scrolls to keep the cursor visible
+- **AND** the most recent characters remain in view

@@ -26,30 +26,37 @@ The application SHALL manage a clean terminal lifecycle with proper initializati
 
 ### Requirement: Split Panel Layout
 
-The application SHALL display a split panel layout with an 80/20 width ratio.
+The application SHALL display a split panel layout with rounded borders.
 
-#### Scenario: Layout renders correctly
+#### Scenario: Layout renders with rounded borders
 
-- **WHEN** the application is running
-- **THEN** the left panel occupies 80% of the terminal width
-- **AND** the right panel occupies 20% of the terminal width
-- **AND** panels are separated by a visible border
+- **WHEN** the application starts
+- **THEN** the left panel occupies approximately 80% of terminal width
+- **AND** the right panel occupies approximately 20% of terminal width
+- **AND** both panels have rounded corner borders
+- **AND** borders are colored dark grey
 
 #### Scenario: Layout adapts to terminal resize
 
 - **WHEN** the terminal is resized
-- **THEN** the panels maintain the 80/20 ratio
-- **AND** content reflows appropriately
+- **THEN** panels maintain their proportional widths
+- **AND** content reflows to fit new dimensions
+- **AND** rounded borders and dark grey color are preserved
 
 ### Requirement: Panel Identification
 
-Each panel SHALL be visually identifiable with a title.
+Each panel SHALL be visually identifiable with a branded title.
 
-#### Scenario: Panels have titles
+#### Scenario: Panels have branded titles
 
 - **WHEN** viewing the application
-- **THEN** the left panel displays title "Input"
-- **AND** the right panel displays title "Results"
+- **THEN** the left panel displays title "🦀CrabCalculator"
+- **AND** the right panel displays title "Memory"
+
+#### Scenario: Emoji fallback for unsupported terminals
+
+- **WHEN** terminal does not support emoji rendering
+- **THEN** the left panel displays title "CrabCalculator" without emoji
 
 ### Requirement: Application Exit
 
@@ -61,9 +68,9 @@ The user SHALL be able to exit the application cleanly.
 - **THEN** the application exits
 - **AND** terminal is restored to normal state
 
-#### Scenario: Exit via 'q' key
+#### Scenario: Exit via Ctrl+Q
 
-- **WHEN** user presses 'q'
+- **WHEN** user presses Ctrl+Q
 - **THEN** the application exits
 - **AND** terminal is restored to normal state
 
@@ -76,3 +83,56 @@ The application SHALL run an event loop that processes keyboard input and render
 - **WHEN** user presses any key
 - **THEN** the event is captured
 - **AND** the UI is re-rendered if necessary
+
+### Requirement: Command Bar
+
+A command bar SHALL be displayed at the bottom of the screen showing available keyboard shortcuts.
+
+#### Scenario: Command bar displays all commands
+
+- **WHEN** viewing the application
+- **THEN** a command bar appears at the bottom of the screen
+- **AND** displays "CTRL+Q: quit"
+- **AND** displays "CTRL+R: clear"
+- **AND** displays "↑↓: history"
+
+### Requirement: Current Line Highlighting
+
+The current cursor line SHALL be visually highlighted across the full width of both panels.
+
+#### Scenario: Editor pane highlights current line full-width
+
+- **WHEN** cursor is on a line in the editor
+- **THEN** that line's background highlight extends to the full panel width
+
+#### Scenario: Results pane highlights corresponding line full-width
+
+- **WHEN** cursor is on a line in the editor
+- **THEN** the corresponding results line's background highlight extends to the full panel width
+
+### Requirement: Scrollable Panes
+
+Both panes SHALL be scrollable when content exceeds the visible area.
+
+#### Scenario: Editor pane scrolls on overflow
+
+- **WHEN** the editor content exceeds the visible height
+- **THEN** the pane scrolls to keep the cursor visible
+- **AND** only visible lines are rendered
+
+#### Scenario: Results pane scrolls with editor
+
+- **WHEN** the editor pane scrolls
+- **THEN** the results pane scrolls to the same position
+- **AND** corresponding lines remain aligned
+
+### Requirement: Clear Buffer
+
+The user SHALL be able to clear the editor buffer.
+
+#### Scenario: Clear via CTRL+r
+
+- **WHEN** user presses CTRL+r
+- **THEN** all lines are removed from the editor buffer
+- **AND** the cursor is reset to row 0, column 0
+- **AND** the results pane is cleared
