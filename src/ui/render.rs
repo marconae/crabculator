@@ -1009,6 +1009,8 @@ pub fn build_command_bar_text<'a>() -> Line<'a> {
         Span::raw(": quit  "),
         Span::styled("CTRL+R", key_style),
         Span::raw(": clear  "),
+        Span::styled("CTRL+H", key_style),
+        Span::raw(": help  "),
         Span::styled("↑↓", key_style),
         Span::raw(": history"),
     ])
@@ -1016,7 +1018,7 @@ pub fn build_command_bar_text<'a>() -> Line<'a> {
 
 /// Renders the command bar at the bottom of the screen.
 ///
-/// Displays available keyboard commands: "CTRL+Q: quit  CTRL+R: clear  ↑↓: history"
+/// Displays available keyboard commands: "CTRL+Q: quit  CTRL+R: clear  CTRL+H: help  ↑↓: history"
 ///
 /// # Arguments
 /// * `frame` - The ratatui Frame to render to
@@ -1026,6 +1028,196 @@ pub fn render_command_bar(frame: &mut Frame, area: Rect) {
     let command_bar = Paragraph::new(command_text).style(Style::default().bg(Color::DarkGray));
 
     frame.render_widget(command_bar, area);
+}
+
+// ============================================================
+// Help Overlay Content and Rendering
+// ============================================================
+
+/// Help content lines for the General Usage section.
+const HELP_GENERAL_USAGE: &[&str] = &[
+    "=== General Usage ===",
+    "",
+    "Crabculator is a multi-line calculator with variable support.",
+    "",
+    "Basic Operations:",
+    "  + - * /    Arithmetic operators",
+    "  %          Modulo",
+    "  ^          Exponentiation",
+    "  ( )        Grouping",
+    "",
+    "Variables:",
+    "  x = 5      Assign value to variable",
+    "  x + 10     Use variable in expression",
+    "",
+    "Keyboard Shortcuts:",
+    "  CTRL+Q     Quit",
+    "  CTRL+R     Clear all",
+    "  CTRL+H     Toggle help",
+    "  ESC        Close help / Quit",
+    "  Arrow keys Navigate / Scroll help",
+    "",
+];
+
+/// Help content lines for the Function Reference section.
+const HELP_FUNCTION_REFERENCE: &[&str] = &[
+    "=== Function Reference ===",
+    "",
+    "Basic Math:",
+    "  sqrt(x)    Square root",
+    "  abs(x)     Absolute value",
+    "  min(a,b)   Minimum value",
+    "  max(a,b)   Maximum value",
+    "",
+    "Trigonometric:",
+    "  sin(x)     Sine (radians)",
+    "  cos(x)     Cosine (radians)",
+    "  tan(x)     Tangent (radians)",
+    "  asin(x)    Arc sine",
+    "  acos(x)    Arc cosine",
+    "  atan(x)    Arc tangent",
+    "",
+    "Hyperbolic:",
+    "  sinh(x)    Hyperbolic sine",
+    "  cosh(x)    Hyperbolic cosine",
+    "  tanh(x)    Hyperbolic tangent",
+    "",
+    "Logarithmic & Exponential:",
+    "  ln(x)      Natural logarithm",
+    "  log(x)     Base-10 logarithm",
+    "  log2(x)    Base-2 logarithm",
+    "  exp(x)     e^x",
+    "",
+    "Rounding:",
+    "  floor(x)   Round down",
+    "  ceil(x)    Round up",
+    "  round(x)   Round to nearest",
+    "  trunc(x)   Truncate to integer",
+    "",
+    "Constants:",
+    "  pi         3.14159...",
+    "  e          2.71828...",
+    "",
+];
+
+/// Returns all help content lines combined.
+#[must_use]
+pub fn help_content_lines() -> Vec<&'static str> {
+    let mut lines = Vec::with_capacity(HELP_GENERAL_USAGE.len() + HELP_FUNCTION_REFERENCE.len());
+    lines.extend_from_slice(HELP_GENERAL_USAGE);
+    lines.extend_from_slice(HELP_FUNCTION_REFERENCE);
+    lines
+}
+
+/// The total number of lines in the help content.
+/// This is the sum of `HELP_GENERAL_USAGE` (21 lines) + `HELP_FUNCTION_REFERENCE` (37 lines).
+pub const HELP_CONTENT_HEIGHT: usize = 58;
+
+/// Calculates the centered area for an overlay of the given dimensions.
+///
+/// # Arguments
+/// * `area` - The parent area to center within
+/// * `width_percent` - The width of the overlay as a percentage of parent (0-100)
+/// * `height_percent` - The height of the overlay as a percentage of parent (0-100)
+///
+/// # Returns
+/// A `Rect` centered within the parent area.
+#[must_use]
+pub const fn centered_rect(area: Rect, width_percent: u16, height_percent: u16) -> Rect {
+    let width = area.width * width_percent / 100;
+    let height = area.height * height_percent / 100;
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    Rect::new(x, y, width, height)
+}
+
+/// Builds styled lines for the help overlay content.
+///
+/// # Arguments
+/// * `scroll_offset` - The first visible line index (0-based)
+/// * `visible_height` - The number of visible lines
+///
+/// # Returns
+/// A vector of styled `Line` objects for rendering.
+#[must_use]
+pub fn build_help_content_lines(scroll_offset: usize, visible_height: usize) -> Vec<Line<'static>> {
+    let all_lines = help_content_lines();
+    let header_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
+
+    let start = scroll_offset.min(all_lines.len());
+    let end = (scroll_offset + visible_height).min(all_lines.len());
+
+    all_lines[start..end]
+        .iter()
+        .map(|&line| {
+            if line.starts_with("===") {
+                Line::from(Span::styled(line, header_style))
+            } else {
+                Line::from(line)
+            }
+        })
+        .collect()
+}
+
+/// Renders the help overlay panel.
+///
+/// Displays a centered, bordered panel with title "Help" containing
+/// the help content. Supports vertical scrolling.
+///
+/// # Arguments
+/// * `frame` - The ratatui Frame to render to
+/// * `area` - The full screen area
+/// * `scroll_offset` - The scroll position for the content
+pub fn render_help_overlay(frame: &mut Frame, area: Rect, scroll_offset: usize) {
+    use ratatui::widgets::Clear;
+
+    // Create centered overlay (70% width, 80% height)
+    let overlay_area = centered_rect(area, 70, 80);
+
+    // Clear the background
+    frame.render_widget(Clear, overlay_area);
+
+    // Calculate visible content height (minus borders)
+    let visible_height = overlay_area.height.saturating_sub(2) as usize;
+
+    // Build the help content with scrolling
+    let content_lines = build_help_content_lines(scroll_offset, visible_height);
+    let content = Text::from(content_lines);
+
+    // Build scroll indicator
+    let total_lines = HELP_CONTENT_HEIGHT;
+    let scroll_info = if total_lines > visible_height {
+        let max_scroll = total_lines.saturating_sub(visible_height);
+        let percent = if max_scroll > 0 {
+            (scroll_offset * 100) / max_scroll
+        } else {
+            0
+        };
+        format!(" [{percent}%] ")
+    } else {
+        String::new()
+    };
+
+    // Create paragraph with scroll indicator in title
+    let title = if scroll_info.is_empty() {
+        " Help ".to_string()
+    } else {
+        format!(" Help {scroll_info}")
+    };
+
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let paragraph = Paragraph::new(content)
+        .block(block)
+        .style(Style::default().bg(Color::Black));
+
+    frame.render_widget(paragraph, overlay_area);
 }
 
 #[cfg(test)]
@@ -2023,6 +2215,139 @@ mod tests {
         assert_eq!(
             total_content_len, panel_width,
             "When content equals panel width, total should still equal panel width"
+        );
+    }
+
+    // ============================================================
+    // Help Overlay tests
+    // ============================================================
+
+    #[test]
+    fn test_help_content_lines_returns_all_content() {
+        let lines = help_content_lines();
+        assert!(
+            !lines.is_empty(),
+            "Help content should have at least one line"
+        );
+        // Should have both sections
+        let content = lines.join("\n");
+        assert!(
+            content.contains("General Usage"),
+            "Should contain General Usage section"
+        );
+        assert!(
+            content.contains("Function Reference"),
+            "Should contain Function Reference section"
+        );
+    }
+
+    #[test]
+    fn test_help_content_height_matches_actual_content() {
+        let lines = help_content_lines();
+        assert_eq!(
+            lines.len(),
+            HELP_CONTENT_HEIGHT,
+            "HELP_CONTENT_HEIGHT constant should match actual content length"
+        );
+    }
+
+    #[test]
+    fn test_centered_rect_centers_horizontally() {
+        let parent = Rect::new(0, 0, 100, 50);
+        let centered = centered_rect(parent, 50, 50);
+
+        // 50% of 100 = 50 width, should start at x=25 to center
+        assert_eq!(centered.width, 50);
+        assert_eq!(centered.x, 25);
+    }
+
+    #[test]
+    fn test_centered_rect_centers_vertically() {
+        let parent = Rect::new(0, 0, 100, 50);
+        let centered = centered_rect(parent, 50, 50);
+
+        // 50% of 50 = 25 height, should start at y=12 to center (rounding down)
+        assert_eq!(centered.height, 25);
+        assert_eq!(centered.y, 12);
+    }
+
+    #[test]
+    fn test_centered_rect_respects_parent_offset() {
+        let parent = Rect::new(10, 20, 100, 50);
+        let centered = centered_rect(parent, 50, 50);
+
+        // Should be centered within parent, accounting for parent's offset
+        assert_eq!(centered.x, 10 + 25); // parent.x + (100 - 50) / 2
+        assert_eq!(centered.y, 20 + 12); // parent.y + (50 - 25) / 2
+    }
+
+    #[test]
+    fn test_build_help_content_lines_returns_visible_slice() {
+        let lines = build_help_content_lines(0, 10);
+        assert_eq!(
+            lines.len(),
+            10,
+            "Should return exactly visible_height lines"
+        );
+    }
+
+    #[test]
+    fn test_build_help_content_lines_respects_scroll_offset() {
+        let all_lines = help_content_lines();
+        let scroll_offset = 5;
+        let visible_height = 10;
+
+        let lines = build_help_content_lines(scroll_offset, visible_height);
+
+        // First visible line should be the 6th line (index 5) from content
+        let first_line_text = lines[0].to_string();
+        assert_eq!(
+            first_line_text, all_lines[scroll_offset],
+            "First visible line should match expected offset"
+        );
+    }
+
+    #[test]
+    fn test_build_help_content_lines_handles_scroll_near_end() {
+        let total = help_content_lines().len();
+        let scroll_offset = total.saturating_sub(5);
+        let visible_height = 20;
+
+        let lines = build_help_content_lines(scroll_offset, visible_height);
+
+        // Should only return remaining lines, not 20
+        let expected = total.saturating_sub(scroll_offset);
+        assert_eq!(
+            lines.len(),
+            expected,
+            "Should return only remaining lines at end"
+        );
+    }
+
+    #[test]
+    fn test_build_help_content_lines_styles_headers() {
+        let lines = build_help_content_lines(0, 5);
+
+        // First line should be "=== General Usage ===" which is styled as header
+        let first_line = &lines[0];
+        // Headers should have yellow bold style
+        if !first_line.spans.is_empty() {
+            let style = first_line.spans[0].style;
+            assert_eq!(
+                style.fg,
+                Some(Color::Yellow),
+                "Header should be styled yellow"
+            );
+        }
+    }
+
+    #[test]
+    fn test_command_bar_includes_help_shortcut() {
+        let text = build_command_bar_text();
+        let text_str = text.to_string();
+        assert!(
+            text_str.contains("CTRL+H") && text_str.contains("help"),
+            "Command bar should contain 'CTRL+H: help'"
         );
     }
 }

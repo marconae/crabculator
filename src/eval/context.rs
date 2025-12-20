@@ -3,7 +3,9 @@
 //! Wraps evalexpr's `HashMapContext` to provide variable storage and retrieval
 //! that persists across line evaluations.
 
-use evalexpr::{HashMapContext, IterateVariablesContext, Value};
+use evalexpr::{
+    ContextWithMutableFunctions, Function, HashMapContext, IterateVariablesContext, Value,
+};
 use std::collections::HashMap;
 
 /// Evaluation context that manages variable bindings.
@@ -16,10 +18,122 @@ pub struct EvalContext {
 }
 
 impl EvalContext {
-    /// Creates a new empty evaluation context.
+    /// Creates a new evaluation context with predefined mathematical constants.
+    ///
+    /// The following constants are pre-defined:
+    /// - `pi`: 3.141592653589793 (mathematical constant pi)
+    /// - `e`: 2.718281828459045 (Euler's number)
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        let mut ctx = Self::default();
+        ctx.init_constants();
+        ctx.init_math_functions();
+        ctx
+    }
+
+    /// Initializes mathematical constants in the context.
+    fn init_constants(&mut self) {
+        self.set_variable("pi", Value::Float(std::f64::consts::PI));
+        self.set_variable("e", Value::Float(std::f64::consts::E));
+    }
+
+    /// Registers mathematical function aliases without the `math::` prefix.
+    ///
+    /// This provides user-friendly short names for common mathematical functions
+    /// that would otherwise require the `math::` namespace prefix.
+    fn init_math_functions(&mut self) {
+        // Basic math functions
+        self.register_math_fn("sqrt", |x: f64| x.sqrt());
+        self.register_math_fn("cbrt", |x: f64| x.cbrt());
+        self.register_math_fn_preserving_int("abs", |x: f64| x.abs(), |x: i64| x.abs());
+        self.register_math_fn2("pow", |base: f64, exp: f64| base.powf(exp));
+
+        // Trigonometric functions
+        self.register_math_fn("sin", |x: f64| x.sin());
+        self.register_math_fn("cos", |x: f64| x.cos());
+        self.register_math_fn("tan", |x: f64| x.tan());
+        self.register_math_fn("asin", |x: f64| x.asin());
+        self.register_math_fn("acos", |x: f64| x.acos());
+        self.register_math_fn("atan", |x: f64| x.atan());
+        self.register_math_fn2("atan2", |y: f64, x: f64| y.atan2(x));
+
+        // Hyperbolic functions
+        self.register_math_fn("sinh", |x: f64| x.sinh());
+        self.register_math_fn("cosh", |x: f64| x.cosh());
+        self.register_math_fn("tanh", |x: f64| x.tanh());
+        self.register_math_fn("asinh", |x: f64| x.asinh());
+        self.register_math_fn("acosh", |x: f64| x.acosh());
+        self.register_math_fn("atanh", |x: f64| x.atanh());
+
+        // Logarithmic and exponential functions
+        self.register_math_fn("ln", |x: f64| x.ln());
+        self.register_math_fn("log", |x: f64| x.log10());
+        self.register_math_fn("log2", |x: f64| x.log2());
+        self.register_math_fn("log10", |x: f64| x.log10());
+        self.register_math_fn("exp", |x: f64| x.exp());
+        self.register_math_fn("exp2", |x: f64| x.exp2());
+
+        // Rounding functions (these may already exist without prefix, but register for consistency)
+        // Note: evalexpr already provides floor, ceil without prefix - skip to avoid conflicts
+
+        // Utility functions
+        self.register_math_fn2("hypot", |a: f64, b: f64| a.hypot(b));
+        // Note: min and max are already provided by evalexpr without prefix
+    }
+
+    /// Helper to register a single-argument math function that returns f64.
+    fn register_math_fn<F>(&mut self, name: &str, f: F)
+    where
+        F: Fn(f64) -> f64 + Send + Sync + Clone + 'static,
+    {
+        let _ = self.inner.set_function(
+            name.into(),
+            Function::new(move |arg| {
+                let x = arg.as_number()?;
+                Ok(Value::Float(f(x)))
+            }),
+        );
+    }
+
+    /// Helper to register abs that preserves int type when given int input.
+    fn register_math_fn_preserving_int<F, G>(&mut self, name: &str, float_fn: F, int_fn: G)
+    where
+        F: Fn(f64) -> f64 + Send + Sync + Clone + 'static,
+        G: Fn(i64) -> i64 + Send + Sync + Clone + 'static,
+    {
+        let _ = self.inner.set_function(
+            name.into(),
+            Function::new(move |arg| {
+                if let Ok(i) = arg.as_int() {
+                    Ok(Value::Int(int_fn(i)))
+                } else {
+                    let x = arg.as_number()?;
+                    Ok(Value::Float(float_fn(x)))
+                }
+            }),
+        );
+    }
+
+    /// Helper to register a two-argument math function that returns f64.
+    fn register_math_fn2<F>(&mut self, name: &str, f: F)
+    where
+        F: Fn(f64, f64) -> f64 + Send + Sync + Clone + 'static,
+    {
+        let _ = self.inner.set_function(
+            name.into(),
+            Function::new(move |arg| {
+                let args = arg.as_tuple()?;
+                if args.len() != 2 {
+                    return Err(evalexpr::EvalexprError::WrongFunctionArgumentAmount {
+                        expected: 2..=2,
+                        actual: args.len(),
+                    });
+                }
+                let a = args[0].as_number()?;
+                let b = args[1].as_number()?;
+                Ok(Value::Float(f(a, b)))
+            }),
+        );
     }
 
     /// Stores a variable with the given name and value.
@@ -163,10 +277,13 @@ mod tests {
     // === extract_variables Tests ===
 
     #[test]
-    fn test_extract_variables_empty_context() {
+    fn test_extract_variables_new_context_contains_constants() {
         let context = EvalContext::new();
         let vars = context.extract_variables();
-        assert!(vars.is_empty());
+        // New context contains predefined constants pi and e
+        assert_eq!(vars.len(), 2);
+        assert!(vars.contains_key("pi"));
+        assert!(vars.contains_key("e"));
     }
 
     #[test]
@@ -210,8 +327,8 @@ mod tests {
         context.set_variable("flag", Value::Boolean(true));
 
         let vars = context.extract_variables();
-        // Only numeric values should be extracted
-        assert_eq!(vars.len(), 1);
+        // Only numeric values should be extracted (includes predefined pi and e)
+        assert_eq!(vars.len(), 3); // num + pi + e
         assert_eq!(vars.get("num"), Some(&42.0));
         assert!(!vars.contains_key("text"));
         assert!(!vars.contains_key("flag"));
@@ -220,10 +337,14 @@ mod tests {
     // === load_variables Tests ===
 
     #[test]
-    fn test_load_variables_empty_map() {
+    fn test_load_variables_empty_map_preserves_constants() {
         let mut context = EvalContext::new();
         context.load_variables(&HashMap::new());
-        assert!(context.extract_variables().is_empty());
+        // Loading empty map preserves predefined constants
+        let vars = context.extract_variables();
+        assert_eq!(vars.len(), 2); // pi and e
+        assert!(vars.contains_key("pi"));
+        assert!(vars.contains_key("e"));
     }
 
     #[test]
@@ -253,5 +374,49 @@ mod tests {
 
         let extracted2 = context2.extract_variables();
         assert_eq!(extracted, extracted2);
+    }
+
+    // === Mathematical Constants Tests ===
+
+    #[test]
+    fn test_new_context_has_pi_constant() {
+        let context = EvalContext::new();
+        let pi = context.get_variable("pi");
+        assert!(pi.is_some(), "pi should be predefined");
+        if let Some(Value::Float(value)) = pi {
+            assert!(
+                (*value - std::f64::consts::PI).abs() < 1e-15,
+                "pi should be 3.141592653589793"
+            );
+        } else {
+            panic!("pi should be a Float value");
+        }
+    }
+
+    #[test]
+    fn test_new_context_has_e_constant() {
+        let context = EvalContext::new();
+        let e = context.get_variable("e");
+        assert!(e.is_some(), "e should be predefined");
+        if let Some(Value::Float(value)) = e {
+            assert!(
+                (*value - std::f64::consts::E).abs() < 1e-15,
+                "e should be 2.718281828459045"
+            );
+        } else {
+            panic!("e should be a Float value");
+        }
+    }
+
+    #[test]
+    fn test_clear_removes_constants_but_new_restores_them() {
+        let mut context = EvalContext::new();
+        assert!(context.get_variable("pi").is_some());
+        context.clear();
+        // After clear, constants are gone (clear is a full reset)
+        assert!(context.get_variable("pi").is_none());
+        // But a new context has them
+        let fresh_context = EvalContext::new();
+        assert!(fresh_context.get_variable("pi").is_some());
     }
 }
