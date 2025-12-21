@@ -94,6 +94,7 @@ A command bar SHALL be displayed at the bottom of the screen showing available k
 - **THEN** a command bar appears at the bottom of the screen
 - **AND** displays "CTRL+Q: quit"
 - **AND** displays "CTRL+R: clear"
+- **AND** displays "CTRL+H: help"
 - **AND** displays "↑↓: history"
 
 ### Requirement: Current Line Highlighting
@@ -136,3 +137,43 @@ The user SHALL be able to clear the editor buffer.
 - **THEN** all lines are removed from the editor buffer
 - **AND** the cursor is reset to row 0, column 0
 - **AND** the results pane is cleared
+
+### Requirement: Help Overlay
+
+The system SHALL provide a help overlay panel accessible via CTRL+H that displays usage information and function reference.
+
+#### Scenario: Open help overlay
+
+- **WHEN** user presses CTRL+H
+- **THEN** a centered overlay panel appears on top of the main interface
+- **AND** the overlay displays a bordered panel with title "Help"
+
+#### Scenario: Close help overlay with CTRL+H
+
+- **WHEN** help overlay is visible and user presses CTRL+H
+- **THEN** the overlay closes
+- **AND** normal editor input resumes
+
+#### Scenario: Close help overlay with ESC
+
+- **WHEN** help overlay is visible and user presses ESC
+- **THEN** the overlay closes
+- **AND** normal editor input resumes
+
+#### Scenario: Help overlay content sections
+
+- **WHEN** help overlay is displayed
+- **THEN** it shows a "General Usage" section explaining basic calculator operations
+- **AND** it shows a "Function Reference" section listing available mathematical functions
+
+#### Scenario: Help overlay scrolling
+
+- **WHEN** help overlay content exceeds the visible area
+- **THEN** user can scroll using arrow keys (Up/Down) or Page Up/Page Down
+- **AND** scroll position is indicated visually
+
+#### Scenario: Help overlay modal behavior
+
+- **WHEN** help overlay is visible
+- **THEN** keyboard input is captured by the overlay
+- **AND** editor does not receive input until overlay is closed
