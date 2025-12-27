@@ -165,9 +165,9 @@ mod tests {
 
     #[test]
     fn test_evaluate_float_literal() {
-        let expr = Expr::Number(3.14159);
+        let expr = Expr::Number(2.5);
         let result = evaluate(&expr, &empty_vars());
-        assert_eq!(result, Ok(3.14159));
+        assert_eq!(result, Ok(2.5));
     }
 
     #[test]

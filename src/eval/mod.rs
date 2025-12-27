@@ -456,9 +456,9 @@ mod tests {
         let context = EvalContext::new();
         let result = evaluate_expression("sin(pi/2)", &context);
         if let Ok(v) = result {
-            assert!((v - 1.0).abs() < 1e-10, "sin(pi/2) should be 1, got {}", v);
+            assert!((v - 1.0).abs() < 1e-10, "sin(pi/2) should be 1, got {v}");
         } else {
-            panic!("Expected Float result, got {:?}", result);
+            panic!("Expected Float result, got {result:?}");
         }
     }
 
@@ -483,11 +483,10 @@ mod tests {
         if let Ok(v) = result {
             assert!(
                 (v - std::f64::consts::FRAC_PI_2).abs() < 1e-10,
-                "asin(1) should be pi/2, got {}",
-                v
+                "asin(1) should be pi/2, got {v}",
             );
         } else {
-            panic!("Expected Float result, got {:?}", result);
+            panic!("Expected Float result, got {result:?}");
         }
     }
 
@@ -512,11 +511,10 @@ mod tests {
         if let Ok(v) = result {
             assert!(
                 (v - std::f64::consts::FRAC_PI_4).abs() < 1e-10,
-                "atan2(1, 1) should be pi/4, got {}",
-                v
+                "atan2(1, 1) should be pi/4, got {v}",
             );
         } else {
-            panic!("Expected Float result, got {:?}", result);
+            panic!("Expected Float result, got {result:?}");
         }
     }
 
@@ -569,9 +567,9 @@ mod tests {
         let context = EvalContext::new();
         let result = evaluate_expression("ln(e)", &context);
         if let Ok(v) = result {
-            assert!((v - 1.0).abs() < 1e-10, "ln(e) should be 1, got {}", v);
+            assert!((v - 1.0).abs() < 1e-10, "ln(e) should be 1, got {v}");
         } else {
-            panic!("Expected Float result, got {:?}", result);
+            panic!("Expected Float result, got {result:?}");
         }
     }
 
@@ -580,9 +578,9 @@ mod tests {
         let context = EvalContext::new();
         let result = evaluate_expression("log10(10)", &context);
         if let Ok(v) = result {
-            assert!((v - 1.0).abs() < 1e-10, "log10(10) should be 1, got {}", v);
+            assert!((v - 1.0).abs() < 1e-10, "log10(10) should be 1, got {v}");
         } else {
-            panic!("Expected Float result, got {:?}", result);
+            panic!("Expected Float result, got {result:?}");
         }
     }
 
@@ -591,9 +589,9 @@ mod tests {
         let context = EvalContext::new();
         let result = evaluate_expression("log2(8)", &context);
         if let Ok(v) = result {
-            assert!((v - 3.0).abs() < 1e-10, "log2(8) should be 3, got {}", v);
+            assert!((v - 3.0).abs() < 1e-10, "log2(8) should be 3, got {v}");
         } else {
-            panic!("Expected Float result, got {:?}", result);
+            panic!("Expected Float result, got {result:?}");
         }
     }
 
@@ -602,13 +600,9 @@ mod tests {
         let context = EvalContext::new();
         let result = evaluate_expression("log(100, 10)", &context);
         if let Ok(v) = result {
-            assert!(
-                (v - 2.0).abs() < 1e-10,
-                "log(100, 10) should be 2, got {}",
-                v
-            );
+            assert!((v - 2.0).abs() < 1e-10, "log(100, 10) should be 2, got {v}",);
         } else {
-            panic!("Expected Float result, got {:?}", result);
+            panic!("Expected Float result, got {result:?}");
         }
     }
 
@@ -619,11 +613,10 @@ mod tests {
         if let Ok(v) = result {
             assert!(
                 (v - std::f64::consts::E).abs() < 1e-10,
-                "exp(1) should be e, got {}",
-                v
+                "exp(1) should be e, got {v}",
             );
         } else {
-            panic!("Expected Float result, got {:?}", result);
+            panic!("Expected Float result, got {result:?}");
         }
     }
 
@@ -697,9 +690,9 @@ mod tests {
         // pi is already predefined
         let result = evaluate_expression("sin(pi)", &context);
         if let Ok(v) = result {
-            assert!(v.abs() < 1e-10, "sin(pi) should be ~0, got {}", v);
+            assert!(v.abs() < 1e-10, "sin(pi) should be ~0, got {v}");
         } else {
-            panic!("Expected Float result, got {:?}", result);
+            panic!("Expected Float result, got {result:?}");
         }
     }
 
@@ -721,7 +714,7 @@ mod tests {
         let context = EvalContext::new();
         let result = evaluate_expression("sqrt(-1)", &context);
         if let Ok(v) = result {
-            assert!(v.is_nan(), "sqrt(-1) should return NaN, got {}", v);
+            assert!(v.is_nan(), "sqrt(-1) should return NaN, got {v}");
         } else {
             // Some implementations might return an error instead
             // That's also acceptable per the spec
@@ -736,8 +729,7 @@ mod tests {
         if let Ok(v) = result {
             assert!(
                 v.is_infinite() && v < 0.0,
-                "ln(0) should return -infinity, got {}",
-                v
+                "ln(0) should return -infinity, got {v}",
             );
         } else {
             // Error is also acceptable
@@ -750,7 +742,7 @@ mod tests {
         let context = EvalContext::new();
         let result = evaluate_expression("acosh(0.5)", &context);
         if let Ok(v) = result {
-            assert!(v.is_nan(), "acosh(0.5) should return NaN, got {}", v);
+            assert!(v.is_nan(), "acosh(0.5) should return NaN, got {v}");
         } else {
             // Error is also acceptable
             assert!(result.is_err() || matches!(result, Ok(f) if f.is_nan()));
