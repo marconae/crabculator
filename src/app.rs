@@ -193,7 +193,6 @@ impl Default for App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use evalexpr::Value;
 
     #[test]
     fn test_app_new_initializes_running() {
@@ -234,7 +233,7 @@ mod tests {
         let mut app = App::new();
         app.buffer.insert_char('a');
         app.buffer.insert_char('b');
-        app.context.set_variable("x", Value::Int(42));
+        app.context.set_variable("x", 42.0);
 
         // save_state should not panic
         app.save_state();
@@ -273,8 +272,8 @@ mod tests {
     #[test]
     fn test_clear_all_clears_context() {
         let mut app = App::new();
-        app.context.set_variable("x", Value::Int(42));
-        app.context.set_variable("y", Value::Float(3.15));
+        app.context.set_variable("x", 42.0);
+        app.context.set_variable("y", 3.15);
 
         app.clear_all();
 
