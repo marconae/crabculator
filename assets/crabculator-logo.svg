@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="termGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F97316"/>
+      <stop offset="100%" style="stop-color:#EA580C"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Terminal window background -->
+  <rect x="20" y="25" width="160" height="130" rx="12" ry="12" fill="#1E1E2E"/>
+  
+  <!-- Terminal header bar -->
+  <rect x="20" y="25" width="160" height="28" rx="12" ry="0" fill="#2D2D3D"/>
+  <rect x="20" y="41" width="160" height="12" fill="#2D2D3D"/>
+  
+  <!-- Traffic light buttons -->
+  <circle cx="38" cy="39" r="5" fill="#FF5F57"/>
+  <circle cx="54" cy="39" r="5" fill="#FFBD2E"/>
+  <circle cx="70" cy="39" r="5" fill="#28CA42"/>
+  
+  <!-- Crab emoji in title bar -->
+  <text x="130" y="43" font-size="12">🦀</text>
+  
+  <!-- Divider line (80/20 split) -->
+  <line x1="138" y1="58" x2="138" y2="148" stroke="#3D3D4D" stroke-width="1"/>
+  
+  <!-- Left panel - expressions -->
+  <g font-family="monospace" font-size="11">
+    <text x="28" y="72" fill="#6B7280">1</text>
+    <text x="42" y="72" fill="#F8F8F2">a = 5</text>
+    
+    <text x="28" y="88" fill="#6B7280">2</text>
+    <text x="42" y="88" fill="#F8F8F2">b = 3</text>
+    
+    <text x="28" y="104" fill="#6B7280">3</text>
+    <text x="42" y="104" fill="#F8F8F2">a + b</text>
+    
+    <text x="28" y="120" fill="#6B7280">4</text>
+    <text x="42" y="120" fill="#F8F8F2">sqrt(64)</text>
+    
+    <text x="28" y="136" fill="#6B7280">5</text>
+    <text x="42" y="136" fill="#A78BFA">pi * 2</text>
+  </g>
+  
+  <!-- Blinking cursor -->
+  <rect x="78" y="126" width="7" height="12" fill="#F97316">
+    <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- Right panel - results -->
+  <g font-family="monospace" font-size="11" fill="#F97316">
+    <text x="144" y="72">5</text>
+    <text x="144" y="88">3</text>
+    <text x="144" y="104">8</text>
+    <text x="144" y="120">8</text>
+    <text x="144" y="136">6.28</text>
+  </g>
+  
+  <!-- Logo text with white outline for dark mode compatibility -->
+  <text x="100" y="178" fill="#333" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" text-anchor="middle" stroke="#FFF" stroke-width="4" paint-order="stroke fill">crabculator</text>
+</svg>
