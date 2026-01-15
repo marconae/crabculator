@@ -5,7 +5,6 @@
 //! - Error message display below error lines
 //! - Result panel with aligned evaluation results
 
-use evalexpr::Value;
 use ratatui::{
     Frame,
     layout::Rect,
@@ -26,30 +25,25 @@ use crate::ui::highlight::{highlight_line, highlight_line_with_offset};
 #[must_use]
 pub fn format_result(result: &LineResult) -> Option<String> {
     match result {
-        LineResult::Value(value) => Some(format_value(value)),
-        LineResult::Assignment { name, value } => Some(format!("{name} = {}", format_value(value))),
+        LineResult::Value(value) => Some(format_value(*value)),
+        LineResult::Assignment { name, value } => {
+            Some(format!("{name} = {}", format_value(*value)))
+        }
         LineResult::Empty | LineResult::Error(_) => None,
     }
 }
 
-/// Formats a `Value` for display.
+/// Formats a `f64` value for display.
 ///
-/// Integers are displayed without decimal places.
-/// Floats are displayed with decimal places unless they are whole numbers.
+/// Whole numbers are displayed without decimal places.
+/// Other floats are displayed with their natural decimal representation.
 #[must_use]
-fn format_value(value: &Value) -> String {
-    match value {
-        Value::Int(i) => i.to_string(),
-        Value::Float(f) => {
-            // If the float is a whole number, display without decimals
-            if f.fract() == 0.0 {
-                format!("{f:.0}")
-            } else {
-                f.to_string()
-            }
-        }
-        // For other value types, use default display
-        other => format!("{other}"),
+fn format_value(value: f64) -> String {
+    // If the float is a whole number, display without decimals
+    if value.fract() == 0.0 && value.abs() < 1e15 {
+        format!("{value:.0}")
+    } else {
+        value.to_string()
     }
 }
 
@@ -1050,25 +1044,25 @@ mod tests {
 
     #[test]
     fn test_format_result_integer_value() {
-        let result = LineResult::Value(Value::Int(42));
+        let result = LineResult::Value(42.0);
         assert_eq!(format_result(&result), Some("42".to_string()));
     }
 
     #[test]
     fn test_format_result_negative_integer() {
-        let result = LineResult::Value(Value::Int(-123));
+        let result = LineResult::Value(-123.0);
         assert_eq!(format_result(&result), Some("-123".to_string()));
     }
 
     #[test]
     fn test_format_result_float_value() {
-        let result = LineResult::Value(Value::Float(2.75));
+        let result = LineResult::Value(2.75);
         assert_eq!(format_result(&result), Some("2.75".to_string()));
     }
 
     #[test]
     fn test_format_result_whole_float_displays_without_decimal() {
-        let result = LineResult::Value(Value::Float(5.0));
+        let result = LineResult::Value(5.0);
         assert_eq!(format_result(&result), Some("5".to_string()));
     }
 
@@ -1076,7 +1070,7 @@ mod tests {
     fn test_format_result_assignment() {
         let result = LineResult::Assignment {
             name: "x".to_string(),
-            value: Value::Int(10),
+            value: 10.0,
         };
         assert_eq!(format_result(&result), Some("x = 10".to_string()));
     }
@@ -1085,7 +1079,7 @@ mod tests {
     fn test_format_result_assignment_with_float() {
         let result = LineResult::Assignment {
             name: "rate".to_string(),
-            value: Value::Float(1.23456),
+            value: 1.23456,
         };
         assert_eq!(format_result(&result), Some("rate = 1.23456".to_string()));
     }
@@ -1108,20 +1102,20 @@ mod tests {
 
     #[test]
     fn test_format_value_large_integer() {
-        let value = Value::Int(1_000_000);
-        assert_eq!(format_value(&value), "1000000");
+        let value = 1_000_000.0;
+        assert_eq!(format_value(value), "1000000");
     }
 
     #[test]
     fn test_format_value_zero() {
-        let value = Value::Int(0);
-        assert_eq!(format_value(&value), "0");
+        let value = 0.0;
+        assert_eq!(format_value(value), "0");
     }
 
     #[test]
     fn test_format_value_small_float() {
-        let value = Value::Float(0.001);
-        assert_eq!(format_value(&value), "0.001");
+        let value = 0.001;
+        assert_eq!(format_value(value), "0.001");
     }
 
     // ============================================================
@@ -1131,7 +1125,7 @@ mod tests {
     #[test]
     fn test_build_input_lines_single_line_no_error() {
         let lines = vec!["5 + 3".to_string()];
-        let results = vec![LineResult::Value(Value::Int(8))];
+        let results = vec![LineResult::Value(8.0)];
 
         let output = build_input_lines(&lines, &results);
 
@@ -1157,9 +1151,9 @@ mod tests {
             "10 - 2".to_string(),
         ];
         let results = vec![
-            LineResult::Value(Value::Int(8)),
+            LineResult::Value(8.0),
             LineResult::Error(EvalError::new("undefined variable")),
-            LineResult::Value(Value::Int(8)),
+            LineResult::Value(8.0),
         ];
 
         let output = build_input_lines(&lines, &results);
@@ -1243,10 +1237,7 @@ mod tests {
 
     #[test]
     fn test_build_result_lines_values() {
-        let results = vec![
-            LineResult::Value(Value::Int(8)),
-            LineResult::Value(Value::Float(2.75)),
-        ];
+        let results = vec![LineResult::Value(8.0), LineResult::Value(2.75)];
 
         let output = build_result_lines(&results);
 
@@ -1278,12 +1269,12 @@ mod tests {
     #[test]
     fn test_build_result_lines_mixed() {
         let results = vec![
-            LineResult::Value(Value::Int(8)),
+            LineResult::Value(8.0),
             LineResult::Empty,
             LineResult::Error(EvalError::new("error")),
             LineResult::Assignment {
                 name: "x".to_string(),
-                value: Value::Int(5),
+                value: 5.0,
             },
         ];
 
@@ -1296,7 +1287,7 @@ mod tests {
     fn test_build_result_lines_assignment_format() {
         let results = vec![LineResult::Assignment {
             name: "result".to_string(),
-            value: Value::Int(42),
+            value: 42.0,
         }];
 
         let output = build_result_lines(&results);
@@ -1315,10 +1306,7 @@ mod tests {
     #[test]
     fn test_build_input_lines_with_highlight_highlights_current_row() {
         let lines = vec!["5 + 3".to_string(), "10 * 2".to_string()];
-        let results = vec![
-            LineResult::Value(Value::Int(8)),
-            LineResult::Value(Value::Int(20)),
-        ];
+        let results = vec![LineResult::Value(8.0), LineResult::Value(20.0)];
         let current_row = 0;
 
         let output = build_input_lines_with_highlight(&lines, &results, current_row);
@@ -1334,10 +1322,7 @@ mod tests {
     #[test]
     fn test_build_input_lines_with_highlight_second_row() {
         let lines = vec!["5 + 3".to_string(), "10 * 2".to_string()];
-        let results = vec![
-            LineResult::Value(Value::Int(8)),
-            LineResult::Value(Value::Int(20)),
-        ];
+        let results = vec![LineResult::Value(8.0), LineResult::Value(20.0)];
         let current_row = 1;
 
         let output = build_input_lines_with_highlight(&lines, &results, current_row);
@@ -1366,10 +1351,7 @@ mod tests {
 
     #[test]
     fn test_build_result_lines_with_highlight_highlights_current_row() {
-        let results = vec![
-            LineResult::Value(Value::Int(8)),
-            LineResult::Value(Value::Int(20)),
-        ];
+        let results = vec![LineResult::Value(8.0), LineResult::Value(20.0)];
         let current_row = 0;
 
         let output = build_result_lines_with_highlight(&results, current_row);
@@ -1383,10 +1365,7 @@ mod tests {
 
     #[test]
     fn test_build_result_lines_with_highlight_second_row() {
-        let results = vec![
-            LineResult::Value(Value::Int(8)),
-            LineResult::Value(Value::Int(20)),
-        ];
+        let results = vec![LineResult::Value(8.0), LineResult::Value(20.0)];
         let current_row = 1;
 
         let output = build_result_lines_with_highlight(&results, current_row);
@@ -1717,8 +1696,8 @@ mod tests {
     #[test]
     fn test_build_visible_result_lines_with_highlight_pads_to_panel_width() {
         let results = vec![
-            LineResult::Value(Value::Int(42)), // "42" is 2 chars
-            LineResult::Value(Value::Int(100)),
+            LineResult::Value(42.0), // "42" is 2 chars
+            LineResult::Value(100.0),
         ];
         let current_row = 0;
         let panel_width = 20;
@@ -1738,10 +1717,7 @@ mod tests {
 
     #[test]
     fn test_build_visible_result_lines_with_highlight_non_current_not_padded() {
-        let results = vec![
-            LineResult::Value(Value::Int(42)),
-            LineResult::Value(Value::Int(100)),
-        ];
+        let results = vec![LineResult::Value(42.0), LineResult::Value(100.0)];
         let current_row = 0;
         let panel_width = 20;
 
@@ -1783,10 +1759,7 @@ mod tests {
     #[test]
     fn test_build_visible_input_lines_with_highlight_applies_style_to_full_line() {
         let lines = vec!["5 + 3".to_string(), "10 * 2".to_string()];
-        let results = vec![
-            LineResult::Value(Value::Int(8)),
-            LineResult::Value(Value::Int(20)),
-        ];
+        let results = vec![LineResult::Value(8.0), LineResult::Value(20.0)];
         let current_row = 0;
 
         let output = build_visible_input_lines_with_highlight(&lines, &results, 0, 10, current_row);
@@ -1810,7 +1783,7 @@ mod tests {
         // When Line has a style, ratatui applies it to the full line width
         // We verify the style is set on the Line itself, not individual spans
         let lines = vec!["x".to_string()];
-        let results = vec![LineResult::Value(Value::Int(1))];
+        let results = vec![LineResult::Value(1.0)];
         let current_row = 0;
 
         let output = build_visible_input_lines_with_highlight(&lines, &results, 0, 10, current_row);
@@ -1824,7 +1797,7 @@ mod tests {
 
     #[test]
     fn test_build_visible_result_lines_with_highlight_with_large_panel_width() {
-        let results = vec![LineResult::Value(Value::Int(1))];
+        let results = vec![LineResult::Value(1.0)];
         let current_row = 0;
         let panel_width = 100;
 
@@ -1842,7 +1815,7 @@ mod tests {
     #[test]
     fn test_build_visible_result_lines_with_highlight_content_equals_panel_width() {
         // Edge case: content is exactly panel width, no padding needed
-        let results = vec![LineResult::Value(Value::Int(12345))];
+        let results = vec![LineResult::Value(12345.0)];
         let current_row = 0;
         let panel_width = 5; // "12345" is exactly 5 chars
 

@@ -3,11 +3,15 @@
 //! This module provides functionality for parsing and evaluating mathematical
 //! expressions, managing variable context, and producing results or errors.
 
+pub mod ast;
 pub mod context;
 pub mod error;
+pub mod evaluator;
 pub mod parser;
+pub mod token;
 
-use evalexpr::Value;
+use crate::eval::ast::Parser;
+use crate::eval::token::Tokenizer;
 
 pub use context::EvalContext;
 pub use error::{ErrorSpan, EvalError};
@@ -17,13 +21,13 @@ pub use parser::{ParsedLine, parse_line};
 #[derive(Debug, Clone, PartialEq)]
 pub enum LineResult {
     /// A successful evaluation with a value.
-    Value(Value),
+    Value(f64),
     /// An assignment that stored a value in a variable.
     Assignment {
         /// The variable name that was assigned.
         name: String,
         /// The value that was assigned.
-        value: Value,
+        value: f64,
     },
     /// An empty line (no result).
     Empty,
@@ -43,12 +47,10 @@ pub enum LineResult {
 /// # Errors
 /// Returns an `EvalError` if the expression is invalid, contains undefined
 /// variables, or results in a runtime error (e.g., division by zero).
-pub fn evaluate_expression(
-    expression: &str,
-    context: &mut EvalContext,
-) -> Result<Value, EvalError> {
-    evalexpr::eval_with_context_mut(expression, context.inner_mut())
-        .map_err(|e| convert_evalexpr_error(&e, expression))
+pub fn evaluate_expression(expression: &str, context: &EvalContext) -> Result<f64, EvalError> {
+    let tokens = Tokenizer::new(expression).tokenize()?;
+    let ast = Parser::new(tokens).parse()?;
+    evaluator::evaluate(&ast, context.variables())
 }
 
 /// Evaluates a single line and returns the result.
@@ -72,7 +74,7 @@ pub fn evaluate_line(line: &str, context: &mut EvalContext) -> LineResult {
         ParsedLine::Assignment { name, expression } => {
             match evaluate_expression(&expression, context) {
                 Ok(value) => {
-                    context.set_variable(&name, value.clone());
+                    context.set_variable(&name, value);
                     LineResult::Assignment { name, value }
                 }
                 Err(e) => LineResult::Error(e),
@@ -121,19 +123,6 @@ pub fn evaluate_all_lines_with_context<'a>(
         .collect()
 }
 
-/// Converts an evalexpr error into our `EvalError` type.
-fn convert_evalexpr_error(error: &evalexpr::EvalexprError, _expression: &str) -> EvalError {
-    // Extract the error message
-    let message = format!("{error}");
-
-    // Try to extract span information if available
-    // Note: evalexpr doesn't always provide position info, so we may not have a span
-    // For now, we return the error without span info
-    // TODO: Parse error messages to extract position hints
-
-    EvalError::new(message)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,126 +130,126 @@ mod tests {
     // Basic expression evaluation tests
     #[test]
     fn test_evaluate_simple_addition() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("5 + 3", &mut context);
-        assert_eq!(result, Ok(Value::Int(8)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("5 + 3", &context);
+        assert_eq!(result, Ok(8.0));
     }
 
     #[test]
     fn test_evaluate_simple_subtraction() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("10 - 4", &mut context);
-        assert_eq!(result, Ok(Value::Int(6)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("10 - 4", &context);
+        assert_eq!(result, Ok(6.0));
     }
 
     #[test]
     fn test_evaluate_simple_multiplication() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("6 * 7", &mut context);
-        assert_eq!(result, Ok(Value::Int(42)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("6 * 7", &context);
+        assert_eq!(result, Ok(42.0));
     }
 
     #[test]
     fn test_evaluate_simple_division() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("20 / 4", &mut context);
-        assert_eq!(result, Ok(Value::Int(5)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("20 / 4", &context);
+        assert_eq!(result, Ok(5.0));
     }
 
     #[test]
     fn test_evaluate_modulo() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("17 % 5", &mut context);
-        assert_eq!(result, Ok(Value::Int(2)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("17 % 5", &context);
+        assert_eq!(result, Ok(2.0));
     }
 
     // Operator precedence tests
     #[test]
     fn test_evaluate_operator_precedence() {
-        let mut context = EvalContext::new();
+        let context = EvalContext::new();
         // 5 + 3 * 2 = 5 + 6 = 11 (multiplication before addition)
-        let result = evaluate_expression("5 + 3 * 2", &mut context);
-        assert_eq!(result, Ok(Value::Int(11)));
+        let result = evaluate_expression("5 + 3 * 2", &context);
+        assert_eq!(result, Ok(11.0));
     }
 
     #[test]
     fn test_evaluate_parentheses() {
-        let mut context = EvalContext::new();
+        let context = EvalContext::new();
         // (5 + 3) * 2 = 8 * 2 = 16
-        let result = evaluate_expression("(5 + 3) * 2", &mut context);
-        assert_eq!(result, Ok(Value::Int(16)));
+        let result = evaluate_expression("(5 + 3) * 2", &context);
+        assert_eq!(result, Ok(16.0));
     }
 
     #[test]
     fn test_evaluate_nested_parentheses() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("((2 + 3) * (4 + 1))", &mut context);
-        assert_eq!(result, Ok(Value::Int(25)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("((2 + 3) * (4 + 1))", &context);
+        assert_eq!(result, Ok(25.0));
     }
 
     // Built-in function tests
     #[test]
     fn test_evaluate_sqrt() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("math::sqrt(16)", &mut context);
-        assert_eq!(result, Ok(Value::Float(4.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("sqrt(16)", &context);
+        assert_eq!(result, Ok(4.0));
     }
 
     #[test]
     fn test_evaluate_floor() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("floor(3.7)", &mut context);
-        assert_eq!(result, Ok(Value::Float(3.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("floor(3.7)", &context);
+        assert_eq!(result, Ok(3.0));
     }
 
     #[test]
     fn test_evaluate_ceil() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("ceil(3.2)", &mut context);
-        assert_eq!(result, Ok(Value::Float(4.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("ceil(3.2)", &context);
+        assert_eq!(result, Ok(4.0));
     }
 
     #[test]
     fn test_evaluate_abs() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("math::abs(-5)", &mut context);
-        assert_eq!(result, Ok(Value::Int(5)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("abs(-5)", &context);
+        assert_eq!(result, Ok(5.0));
     }
 
     // Float tests
     #[test]
     fn test_evaluate_float_expression() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("2.5 * 4.0", &mut context);
-        assert_eq!(result, Ok(Value::Float(10.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("2.5 * 4.0", &context);
+        assert_eq!(result, Ok(10.0));
     }
 
     #[test]
     fn test_evaluate_integer_division_to_float() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("5 / 2", &mut context);
-        assert_eq!(result, Ok(Value::Int(2))); // Integer division
+        let context = EvalContext::new();
+        let result = evaluate_expression("5 / 2", &context);
+        assert_eq!(result, Ok(2.5)); // f64 division
     }
 
     // Error tests
     #[test]
     fn test_evaluate_syntax_error() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("5 + + 3", &mut context);
+        let context = EvalContext::new();
+        let result = evaluate_expression("5 + + 3", &context);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_evaluate_undefined_variable() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("undefined_var + 1", &mut context);
+        let context = EvalContext::new();
+        let result = evaluate_expression("undefined_var + 1", &context);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_evaluate_unclosed_parenthesis() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("(5 + 3", &mut context);
+        let context = EvalContext::new();
+        let result = evaluate_expression("(5 + 3", &context);
         assert!(result.is_err());
     }
 
@@ -268,18 +257,18 @@ mod tests {
     #[test]
     fn test_evaluate_with_predefined_variable() {
         let mut context = EvalContext::new();
-        context.set_variable("x", Value::Int(10));
-        let result = evaluate_expression("x + 5", &mut context);
-        assert_eq!(result, Ok(Value::Int(15)));
+        context.set_variable("x", 10.0);
+        let result = evaluate_expression("x + 5", &context);
+        assert_eq!(result, Ok(15.0));
     }
 
     #[test]
     fn test_evaluate_with_multiple_variables() {
         let mut context = EvalContext::new();
-        context.set_variable("a", Value::Int(3));
-        context.set_variable("b", Value::Int(4));
-        let result = evaluate_expression("a * b", &mut context);
-        assert_eq!(result, Ok(Value::Int(12)));
+        context.set_variable("a", 3.0);
+        context.set_variable("b", 4.0);
+        let result = evaluate_expression("a * b", &context);
+        assert_eq!(result, Ok(12.0));
     }
 
     // evaluate_line tests
@@ -301,7 +290,7 @@ mod tests {
     fn test_evaluate_line_expression() {
         let mut context = EvalContext::new();
         let result = evaluate_line("5 + 3", &mut context);
-        assert_eq!(result, LineResult::Value(Value::Int(8)));
+        assert_eq!(result, LineResult::Value(8.0));
     }
 
     #[test]
@@ -312,11 +301,11 @@ mod tests {
             result,
             LineResult::Assignment {
                 name: "a".to_string(),
-                value: Value::Int(8),
+                value: 8.0,
             }
         );
         // Verify the variable was stored
-        assert_eq!(context.get_variable("a"), Some(&Value::Int(8)));
+        assert_eq!(context.get_variable("a"), Some(8.0));
     }
 
     #[test]
@@ -333,8 +322,8 @@ mod tests {
         let results = evaluate_all_lines(lines);
 
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0], LineResult::Value(Value::Int(8)));
-        assert_eq!(results[1], LineResult::Value(Value::Int(8)));
+        assert_eq!(results[0], LineResult::Value(8.0));
+        assert_eq!(results[1], LineResult::Value(8.0));
     }
 
     #[test]
@@ -347,10 +336,10 @@ mod tests {
             results[0],
             LineResult::Assignment {
                 name: "a".to_string(),
-                value: Value::Int(10),
+                value: 10.0,
             }
         );
-        assert_eq!(results[1], LineResult::Value(Value::Int(15)));
+        assert_eq!(results[1], LineResult::Value(15.0));
     }
 
     #[test]
@@ -363,17 +352,17 @@ mod tests {
             results[0],
             LineResult::Assignment {
                 name: "a".to_string(),
-                value: Value::Int(10),
+                value: 10.0,
             }
         );
         assert_eq!(
             results[1],
             LineResult::Assignment {
                 name: "b".to_string(),
-                value: Value::Int(20),
+                value: 20.0,
             }
         );
-        assert_eq!(results[2], LineResult::Value(Value::Int(30)));
+        assert_eq!(results[2], LineResult::Value(30.0));
     }
 
     #[test]
@@ -382,9 +371,9 @@ mod tests {
         let results = evaluate_all_lines(lines);
 
         assert_eq!(results.len(), 3);
-        assert_eq!(results[0], LineResult::Value(Value::Int(8)));
+        assert_eq!(results[0], LineResult::Value(8.0));
         assert_eq!(results[1], LineResult::Empty);
-        assert_eq!(results[2], LineResult::Value(Value::Int(8)));
+        assert_eq!(results[2], LineResult::Value(8.0));
     }
 
     #[test]
@@ -393,32 +382,32 @@ mod tests {
         let results = evaluate_all_lines(lines);
 
         assert_eq!(results.len(), 3);
-        assert_eq!(results[0], LineResult::Value(Value::Int(8)));
+        assert_eq!(results[0], LineResult::Value(8.0));
         assert!(matches!(results[1], LineResult::Error(_)));
-        assert_eq!(results[2], LineResult::Value(Value::Int(8)));
+        assert_eq!(results[2], LineResult::Value(8.0));
     }
 
     // Complex expression tests
     #[test]
     fn test_evaluate_complex_expression() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("(10 + 5) * 2 - 8 / 4", &mut context);
+        let context = EvalContext::new();
+        let result = evaluate_expression("(10 + 5) * 2 - 8 / 4", &context);
         // (10 + 5) * 2 - 8 / 4 = 15 * 2 - 2 = 30 - 2 = 28
-        assert_eq!(result, Ok(Value::Int(28)));
+        assert_eq!(result, Ok(28.0));
     }
 
     #[test]
     fn test_evaluate_negative_numbers() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("-5 + 3", &mut context);
-        assert_eq!(result, Ok(Value::Int(-2)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("-5 + 3", &context);
+        assert_eq!(result, Ok(-2.0));
     }
 
     #[test]
     fn test_evaluate_single_number() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("42", &mut context);
-        assert_eq!(result, Ok(Value::Int(42)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("42", &context);
+        assert_eq!(result, Ok(42.0));
     }
 
     // ============================================================
@@ -428,45 +417,45 @@ mod tests {
     // Basic math functions
     #[test]
     fn test_sqrt_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("sqrt(16)", &mut context);
-        assert_eq!(result, Ok(Value::Float(4.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("sqrt(16)", &context);
+        assert_eq!(result, Ok(4.0));
     }
 
     #[test]
     fn test_cbrt_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("cbrt(27)", &mut context);
-        assert_eq!(result, Ok(Value::Float(3.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("cbrt(27)", &context);
+        assert_eq!(result, Ok(3.0));
     }
 
     #[test]
-    fn test_abs_short_alias_int() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("abs(-5)", &mut context);
-        assert_eq!(result, Ok(Value::Int(5)));
+    fn test_abs_short_alias() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("abs(-5)", &context);
+        assert_eq!(result, Ok(5.0));
     }
 
     #[test]
     fn test_abs_short_alias_float() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("abs(-3.5)", &mut context);
-        assert_eq!(result, Ok(Value::Float(3.5)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("abs(-3.5)", &context);
+        assert_eq!(result, Ok(3.5));
     }
 
     #[test]
     fn test_pow_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("pow(2, 8)", &mut context);
-        assert_eq!(result, Ok(Value::Float(256.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("pow(2, 8)", &context);
+        assert_eq!(result, Ok(256.0));
     }
 
     // Trigonometric functions
     #[test]
     fn test_sin_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("sin(pi/2)", &mut context);
-        if let Ok(Value::Float(v)) = result {
+        let context = EvalContext::new();
+        let result = evaluate_expression("sin(pi/2)", &context);
+        if let Ok(v) = result {
             assert!((v - 1.0).abs() < 1e-10, "sin(pi/2) should be 1, got {}", v);
         } else {
             panic!("Expected Float result, got {:?}", result);
@@ -475,23 +464,23 @@ mod tests {
 
     #[test]
     fn test_cos_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("cos(0)", &mut context);
-        assert_eq!(result, Ok(Value::Float(1.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("cos(0)", &context);
+        assert_eq!(result, Ok(1.0));
     }
 
     #[test]
     fn test_tan_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("tan(0)", &mut context);
-        assert_eq!(result, Ok(Value::Float(0.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("tan(0)", &context);
+        assert_eq!(result, Ok(0.0));
     }
 
     #[test]
     fn test_asin_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("asin(1)", &mut context);
-        if let Ok(Value::Float(v)) = result {
+        let context = EvalContext::new();
+        let result = evaluate_expression("asin(1)", &context);
+        if let Ok(v) = result {
             assert!(
                 (v - std::f64::consts::FRAC_PI_2).abs() < 1e-10,
                 "asin(1) should be pi/2, got {}",
@@ -504,23 +493,23 @@ mod tests {
 
     #[test]
     fn test_acos_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("acos(1)", &mut context);
-        assert_eq!(result, Ok(Value::Float(0.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("acos(1)", &context);
+        assert_eq!(result, Ok(0.0));
     }
 
     #[test]
     fn test_atan_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("atan(0)", &mut context);
-        assert_eq!(result, Ok(Value::Float(0.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("atan(0)", &context);
+        assert_eq!(result, Ok(0.0));
     }
 
     #[test]
     fn test_atan2_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("atan2(1, 1)", &mut context);
-        if let Ok(Value::Float(v)) = result {
+        let context = EvalContext::new();
+        let result = evaluate_expression("atan2(1, 1)", &context);
+        if let Ok(v) = result {
             assert!(
                 (v - std::f64::consts::FRAC_PI_4).abs() < 1e-10,
                 "atan2(1, 1) should be pi/4, got {}",
@@ -534,52 +523,52 @@ mod tests {
     // Hyperbolic functions
     #[test]
     fn test_sinh_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("sinh(0)", &mut context);
-        assert_eq!(result, Ok(Value::Float(0.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("sinh(0)", &context);
+        assert_eq!(result, Ok(0.0));
     }
 
     #[test]
     fn test_cosh_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("cosh(0)", &mut context);
-        assert_eq!(result, Ok(Value::Float(1.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("cosh(0)", &context);
+        assert_eq!(result, Ok(1.0));
     }
 
     #[test]
     fn test_tanh_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("tanh(0)", &mut context);
-        assert_eq!(result, Ok(Value::Float(0.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("tanh(0)", &context);
+        assert_eq!(result, Ok(0.0));
     }
 
     #[test]
     fn test_asinh_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("asinh(0)", &mut context);
-        assert_eq!(result, Ok(Value::Float(0.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("asinh(0)", &context);
+        assert_eq!(result, Ok(0.0));
     }
 
     #[test]
     fn test_acosh_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("acosh(1)", &mut context);
-        assert_eq!(result, Ok(Value::Float(0.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("acosh(1)", &context);
+        assert_eq!(result, Ok(0.0));
     }
 
     #[test]
     fn test_atanh_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("atanh(0)", &mut context);
-        assert_eq!(result, Ok(Value::Float(0.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("atanh(0)", &context);
+        assert_eq!(result, Ok(0.0));
     }
 
     // Logarithmic and exponential functions
     #[test]
     fn test_ln_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("ln(e)", &mut context);
-        if let Ok(Value::Float(v)) = result {
+        let context = EvalContext::new();
+        let result = evaluate_expression("ln(e)", &context);
+        if let Ok(v) = result {
             assert!((v - 1.0).abs() < 1e-10, "ln(e) should be 1, got {}", v);
         } else {
             panic!("Expected Float result, got {:?}", result);
@@ -587,11 +576,11 @@ mod tests {
     }
 
     #[test]
-    fn test_log_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("log(10)", &mut context);
-        if let Ok(Value::Float(v)) = result {
-            assert!((v - 1.0).abs() < 1e-10, "log(10) should be 1, got {}", v);
+    fn test_log10_short_alias() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("log10(10)", &context);
+        if let Ok(v) = result {
+            assert!((v - 1.0).abs() < 1e-10, "log10(10) should be 1, got {}", v);
         } else {
             panic!("Expected Float result, got {:?}", result);
         }
@@ -599,9 +588,9 @@ mod tests {
 
     #[test]
     fn test_log2_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("log2(8)", &mut context);
-        if let Ok(Value::Float(v)) = result {
+        let context = EvalContext::new();
+        let result = evaluate_expression("log2(8)", &context);
+        if let Ok(v) = result {
             assert!((v - 3.0).abs() < 1e-10, "log2(8) should be 3, got {}", v);
         } else {
             panic!("Expected Float result, got {:?}", result);
@@ -609,11 +598,15 @@ mod tests {
     }
 
     #[test]
-    fn test_log10_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("log10(100)", &mut context);
-        if let Ok(Value::Float(v)) = result {
-            assert!((v - 2.0).abs() < 1e-10, "log10(100) should be 2, got {}", v);
+    fn test_log_with_base() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("log(100, 10)", &context);
+        if let Ok(v) = result {
+            assert!(
+                (v - 2.0).abs() < 1e-10,
+                "log(100, 10) should be 2, got {}",
+                v
+            );
         } else {
             panic!("Expected Float result, got {:?}", result);
         }
@@ -621,9 +614,9 @@ mod tests {
 
     #[test]
     fn test_exp_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("exp(1)", &mut context);
-        if let Ok(Value::Float(v)) = result {
+        let context = EvalContext::new();
+        let result = evaluate_expression("exp(1)", &context);
+        if let Ok(v) = result {
             assert!(
                 (v - std::f64::consts::E).abs() < 1e-10,
                 "exp(1) should be e, got {}",
@@ -636,54 +629,54 @@ mod tests {
 
     #[test]
     fn test_exp2_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("exp2(3)", &mut context);
-        assert_eq!(result, Ok(Value::Float(8.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("exp2(3)", &context);
+        assert_eq!(result, Ok(8.0));
     }
 
-    // Rounding functions (these already work without prefix in evalexpr)
+    // Rounding functions
     #[test]
     fn test_floor_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("floor(3.9)", &mut context);
-        assert_eq!(result, Ok(Value::Float(3.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("floor(3.9)", &context);
+        assert_eq!(result, Ok(3.0));
     }
 
     #[test]
     fn test_ceil_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("ceil(3.1)", &mut context);
-        assert_eq!(result, Ok(Value::Float(4.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("ceil(3.1)", &context);
+        assert_eq!(result, Ok(4.0));
     }
 
     #[test]
     fn test_round_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("round(3.5)", &mut context);
-        // Note: round(3.5) in evalexpr rounds to 4.0 (round half up)
-        assert_eq!(result, Ok(Value::Float(4.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("round(3.5)", &context);
+        // Note: round(3.5) in f64.round() uses "round half away from zero"
+        assert_eq!(result, Ok(4.0));
     }
 
     // Utility functions
     #[test]
     fn test_min_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("min(3, 7)", &mut context);
-        assert_eq!(result, Ok(Value::Int(3)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("min(3, 7)", &context);
+        assert_eq!(result, Ok(3.0));
     }
 
     #[test]
     fn test_max_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("max(3, 7)", &mut context);
-        assert_eq!(result, Ok(Value::Int(7)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("max(3, 7)", &context);
+        assert_eq!(result, Ok(7.0));
     }
 
     #[test]
     fn test_hypot_short_alias() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("hypot(3, 4)", &mut context);
-        assert_eq!(result, Ok(Value::Float(5.0)));
+        let context = EvalContext::new();
+        let result = evaluate_expression("hypot(3, 4)", &context);
+        assert_eq!(result, Ok(5.0));
     }
 
     // ============================================================
@@ -693,17 +686,17 @@ mod tests {
     #[test]
     fn test_sqrt_with_variable() {
         let mut context = EvalContext::new();
-        context.set_variable("x", Value::Int(9));
-        let result = evaluate_expression("sqrt(x)", &mut context);
-        assert_eq!(result, Ok(Value::Float(3.0)));
+        context.set_variable("x", 9.0);
+        let result = evaluate_expression("sqrt(x)", &context);
+        assert_eq!(result, Ok(3.0));
     }
 
     #[test]
     fn test_sin_with_pi_variable() {
-        let mut context = EvalContext::new();
+        let context = EvalContext::new();
         // pi is already predefined
-        let result = evaluate_expression("sin(pi)", &mut context);
-        if let Ok(Value::Float(v)) = result {
+        let result = evaluate_expression("sin(pi)", &context);
+        if let Ok(v) = result {
             assert!(v.abs() < 1e-10, "sin(pi) should be ~0, got {}", v);
         } else {
             panic!("Expected Float result, got {:?}", result);
@@ -713,10 +706,10 @@ mod tests {
     #[test]
     fn test_pow_with_variables() {
         let mut context = EvalContext::new();
-        context.set_variable("base", Value::Int(2));
-        context.set_variable("exp", Value::Int(10));
-        let result = evaluate_expression("pow(base, exp)", &mut context);
-        assert_eq!(result, Ok(Value::Float(1024.0)));
+        context.set_variable("base", 2.0);
+        context.set_variable("exp", 10.0);
+        let result = evaluate_expression("pow(base, exp)", &context);
+        assert_eq!(result, Ok(1024.0));
     }
 
     // ============================================================
@@ -725,42 +718,68 @@ mod tests {
 
     #[test]
     fn test_sqrt_negative_returns_nan() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("sqrt(-1)", &mut context);
-        if let Ok(Value::Float(v)) = result {
+        let context = EvalContext::new();
+        let result = evaluate_expression("sqrt(-1)", &context);
+        if let Ok(v) = result {
             assert!(v.is_nan(), "sqrt(-1) should return NaN, got {}", v);
         } else {
             // Some implementations might return an error instead
             // That's also acceptable per the spec
-            assert!(result.is_err() || matches!(result, Ok(Value::Float(f)) if f.is_nan()));
+            assert!(result.is_err() || matches!(result, Ok(f) if f.is_nan()));
         }
     }
 
     #[test]
     fn test_log_zero_returns_neg_infinity() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("log(0)", &mut context);
-        if let Ok(Value::Float(v)) = result {
+        let context = EvalContext::new();
+        let result = evaluate_expression("ln(0)", &context);
+        if let Ok(v) = result {
             assert!(
                 v.is_infinite() && v < 0.0,
-                "log(0) should return -infinity, got {}",
+                "ln(0) should return -infinity, got {}",
                 v
             );
         } else {
             // Error is also acceptable
-            assert!(result.is_err() || matches!(result, Ok(Value::Float(f)) if f.is_infinite()));
+            assert!(result.is_err() || matches!(result, Ok(f) if f.is_infinite()));
         }
     }
 
     #[test]
     fn test_acosh_less_than_one_returns_nan() {
-        let mut context = EvalContext::new();
-        let result = evaluate_expression("acosh(0.5)", &mut context);
-        if let Ok(Value::Float(v)) = result {
+        let context = EvalContext::new();
+        let result = evaluate_expression("acosh(0.5)", &context);
+        if let Ok(v) = result {
             assert!(v.is_nan(), "acosh(0.5) should return NaN, got {}", v);
         } else {
             // Error is also acceptable
-            assert!(result.is_err() || matches!(result, Ok(Value::Float(f)) if f.is_nan()));
+            assert!(result.is_err() || matches!(result, Ok(f) if f.is_nan()));
         }
+    }
+
+    // ============================================================
+    // Tests for power operator
+    // ============================================================
+
+    #[test]
+    fn test_power_operator() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("2^3", &context);
+        assert_eq!(result, Ok(8.0));
+    }
+
+    #[test]
+    fn test_power_operator_right_associative() {
+        let context = EvalContext::new();
+        // 2^3^2 should be 2^(3^2) = 2^9 = 512
+        let result = evaluate_expression("2^3^2", &context);
+        assert_eq!(result, Ok(512.0));
+    }
+
+    #[test]
+    fn test_power_operator_with_parentheses() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("2^(3+1)", &context);
+        assert_eq!(result, Ok(16.0));
     }
 }
