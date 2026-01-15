@@ -10,11 +10,12 @@ pub use highlight::{Token, TokenType, highlight_line, token_style, tokenize};
 
 pub use layout::{LayoutAreas, create_main_layout, create_panel_layout};
 pub use render::{
-    build_input_lines, build_input_lines_with_highlight, build_result_lines,
-    build_result_lines_with_highlight, build_visible_input_lines,
-    build_visible_input_lines_with_highlight, build_visible_result_lines,
-    build_visible_result_lines_with_highlight, current_line_highlight_style, format_result,
-    render_command_bar, render_input_panel, render_result_panel,
+    HELP_CONTENT_HEIGHT, build_help_content_lines, build_input_lines,
+    build_input_lines_with_highlight, build_result_lines, build_result_lines_with_highlight,
+    build_visible_input_lines, build_visible_input_lines_with_highlight,
+    build_visible_result_lines, build_visible_result_lines_with_highlight, centered_rect,
+    current_line_highlight_style, format_result, help_content_lines, render_command_bar,
+    render_help_overlay, render_input_panel, render_result_panel,
 };
 
 use crate::app::App;
@@ -69,6 +70,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // Render command bar at the bottom
     render_command_bar(frame, areas.command_bar);
+
+    // Render help overlay if visible (on top of everything)
+    if app.help_visible {
+        render_help_overlay(frame, frame.area(), app.help_scroll_offset);
+    }
 }
 
 #[cfg(test)]
