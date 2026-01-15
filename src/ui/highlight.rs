@@ -196,6 +196,64 @@ pub fn highlight_line(line: &str) -> Vec<Span<'_>> {
     spans
 }
 
+/// Converts a visible portion of a line into styled spans with syntax highlighting.
+///
+/// This function handles horizontal scrolling by only returning spans for the
+/// visible portion of the line.
+///
+/// # Arguments
+/// * `line` - The full line of text to highlight
+/// * `horizontal_offset` - The first visible column index (0-based)
+/// * `visible_width` - The number of visible columns
+///
+/// # Returns
+/// A vector of styled spans representing the visible portion of the highlighted line.
+#[must_use]
+pub fn highlight_line_with_offset(
+    line: &str,
+    horizontal_offset: usize,
+    visible_width: usize,
+) -> Vec<Span<'_>> {
+    if horizontal_offset >= line.len() {
+        return vec![];
+    }
+
+    let tokens = tokenize(line);
+
+    let mut spans = Vec::new();
+    let mut pos = 0;
+    let visible_end = (horizontal_offset + visible_width).min(line.len());
+
+    for token in tokens {
+        let token_start = pos;
+        let token_end = pos + token.text.len();
+
+        // Skip tokens entirely before visible area
+        if token_end <= horizontal_offset {
+            pos = token_end;
+            continue;
+        }
+
+        // Stop if token starts after visible area
+        if token_start >= visible_end {
+            break;
+        }
+
+        // Calculate visible portion of this token
+        let visible_start = token_start.max(horizontal_offset);
+        let visible_token_end = token_end.min(visible_end);
+
+        if visible_start < visible_token_end && visible_token_end <= line.len() {
+            let style = token_style(&token.token_type);
+            spans.push(Span::styled(&line[visible_start..visible_token_end], style));
+        }
+
+        pos = token_end;
+    }
+
+    spans
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -529,5 +587,87 @@ mod tests {
 
         let reconstructed: String = spans.iter().map(|s| s.content.as_ref()).collect();
         assert_eq!(reconstructed, line);
+    }
+
+    // ============================================================
+    // Highlight line with offset tests
+    // ============================================================
+
+    #[test]
+    fn test_highlight_line_with_offset_returns_visible_portion() {
+        let line = "0123456789abcdef";
+        let spans = highlight_line_with_offset(line, 5, 5);
+
+        // Should return spans for positions 5-9 ("56789")
+        let reconstructed: String = spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(reconstructed, "56789");
+    }
+
+    #[test]
+    fn test_highlight_line_with_offset_zero_starts_from_beginning() {
+        let line = "abc";
+        let spans = highlight_line_with_offset(line, 0, 10);
+
+        let reconstructed: String = spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(reconstructed, "abc");
+    }
+
+    #[test]
+    fn test_highlight_line_with_offset_beyond_line_length() {
+        let line = "abc";
+        let spans = highlight_line_with_offset(line, 10, 5);
+
+        // Offset beyond line length should return empty
+        assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn test_highlight_line_with_offset_partial_token_at_start() {
+        // Line: "x = 10" (positions: x=0, space=1, ==2, space=3, 1=4, 0=5)
+        // Offset 2 should start from "= 10"
+        let line = "x = 10";
+        let spans = highlight_line_with_offset(line, 2, 10);
+
+        let reconstructed: String = spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(reconstructed, "= 10");
+    }
+
+    #[test]
+    fn test_highlight_line_with_offset_partial_token_at_end() {
+        // Line: "x = 10" - visible width cuts off part of the line
+        let line = "x = 10";
+        let spans = highlight_line_with_offset(line, 0, 4);
+
+        // Should show "x = " (positions 0-3)
+        let reconstructed: String = spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(reconstructed, "x = ");
+    }
+
+    #[test]
+    fn test_highlight_line_with_offset_preserves_syntax_highlighting() {
+        // Line: "sqrt(16)" - check that function is still cyan colored
+        let line = "sqrt(16)";
+        let spans = highlight_line_with_offset(line, 0, 8);
+
+        // First span should be "sqrt" with cyan color (function)
+        assert_eq!(spans[0].content.as_ref(), "sqrt");
+        assert_eq!(spans[0].style.fg, Some(Color::Cyan));
+    }
+
+    #[test]
+    fn test_highlight_line_with_offset_empty_line() {
+        let line = "";
+        let spans = highlight_line_with_offset(line, 0, 10);
+        assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn test_highlight_line_with_offset_offset_at_token_boundary() {
+        // Line: "5 + 3" - offset at position 2 (the '+')
+        let line = "5 + 3";
+        let spans = highlight_line_with_offset(line, 2, 10);
+
+        let reconstructed: String = spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(reconstructed, "+ 3");
     }
 }
