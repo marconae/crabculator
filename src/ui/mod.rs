@@ -12,10 +12,9 @@ pub use layout::{LayoutAreas, create_main_layout, create_panel_layout};
 pub use render::{
     HELP_CONTENT_HEIGHT, build_help_content_lines, build_input_lines,
     build_input_lines_with_highlight, build_result_lines, build_result_lines_with_highlight,
-    build_visible_input_lines, build_visible_input_lines_with_highlight,
-    build_visible_result_lines, build_visible_result_lines_with_highlight, centered_rect,
-    current_line_highlight_style, format_result, help_content_lines, render_command_bar,
-    render_help_overlay, render_input_panel, render_result_panel,
+    build_visible_input_lines_with_highlight, build_visible_result_lines_with_highlight,
+    centered_rect, current_line_highlight_style, format_result, help_content_lines,
+    render_command_bar, render_help_overlay, render_input_panel, render_result_panel,
 };
 
 use crate::app::App;
