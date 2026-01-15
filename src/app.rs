@@ -13,6 +13,9 @@ pub struct App {
     /// Scroll offset (first visible line index, 0-based).
     /// Used for vertical scrolling when content exceeds visible height.
     pub scroll_offset: usize,
+    /// Horizontal scroll offset (first visible column index, 0-based).
+    /// Used for horizontal scrolling when content exceeds visible width.
+    pub horizontal_scroll_offset: usize,
 }
 
 impl App {
@@ -41,6 +44,7 @@ impl App {
             buffer,
             context,
             scroll_offset: 0,
+            horizontal_scroll_offset: 0,
         }
     }
 
@@ -69,10 +73,12 @@ impl App {
     /// - Resets the cursor to position (0, 0)
     /// - Clears all variables from the evaluation context
     /// - Resets the scroll offset to 0
+    /// - Resets the horizontal scroll offset to 0
     pub fn clear_all(&mut self) {
         self.buffer.clear();
         self.context.clear();
         self.scroll_offset = 0;
+        self.horizontal_scroll_offset = 0;
     }
 
     /// Adjusts scroll offset to keep cursor within visible area.
@@ -100,6 +106,39 @@ impl App {
         // Last visible line is scroll_offset + visible_height - 1
         if cursor_row >= self.scroll_offset + visible_height {
             self.scroll_offset = cursor_row - visible_height + 1;
+        }
+    }
+
+    /// Adjusts horizontal scroll offset to keep cursor within visible area.
+    ///
+    /// Called after cursor movement to ensure the cursor column is visible.
+    /// If cursor is before visible area, scrolls left. If cursor is after
+    /// visible area, scrolls right to make it visible.
+    ///
+    /// A margin is used to provide smoother scrolling experience by triggering
+    /// scroll before the cursor reaches the absolute edge.
+    ///
+    /// # Arguments
+    /// * `visible_width` - The number of visible columns in the viewport
+    #[allow(clippy::missing_const_for_fn)] // cursor().col() is not const
+    pub fn adjust_horizontal_scroll(&mut self, visible_width: usize) {
+        if visible_width == 0 {
+            return;
+        }
+
+        let cursor_col = self.buffer.cursor().col();
+        // Use a margin for smoother scrolling (5 chars or less if width is small)
+        let margin = visible_width.min(5).saturating_sub(1);
+
+        // If cursor is before visible area (with margin), scroll left to show it
+        if cursor_col < self.horizontal_scroll_offset + margin {
+            self.horizontal_scroll_offset = cursor_col.saturating_sub(margin);
+        }
+
+        // If cursor is after visible area (with margin), scroll right to show it
+        // Last visible column is horizontal_scroll_offset + visible_width - 1
+        if cursor_col >= self.horizontal_scroll_offset + visible_width - margin {
+            self.horizontal_scroll_offset = cursor_col.saturating_sub(visible_width - margin - 1);
         }
     }
 }
@@ -317,5 +356,101 @@ mod tests {
 
         // Single line, scroll should stay at 0
         assert_eq!(app.scroll_offset, 0);
+    }
+
+    // ============================================================
+    // Horizontal scroll offset adjustment tests
+    // ============================================================
+
+    #[test]
+    fn test_adjust_horizontal_scroll_cursor_before_visible_area_scrolls_left() {
+        let mut app = App::new();
+        // Create a line with some content
+        for c in "0123456789abcdef".chars() {
+            app.buffer.insert_char(c);
+        }
+        // Move cursor to start
+        app.buffer.move_cursor_to_line_start();
+        // Set horizontal scroll offset as if we scrolled right
+        app.horizontal_scroll_offset = 10;
+        // Cursor is at column 0, which is before visible area
+        let visible_width = 10;
+
+        app.adjust_horizontal_scroll(visible_width);
+
+        // Scroll should adjust to show cursor (column 0)
+        assert_eq!(app.horizontal_scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_adjust_horizontal_scroll_cursor_after_visible_area_scrolls_right() {
+        let mut app = App::new();
+        // Create a line with content extending beyond visible area
+        for c in "0123456789abcdefghij".chars() {
+            app.buffer.insert_char(c);
+        }
+        // Cursor should be at column 20 (end of line)
+        assert_eq!(app.buffer.cursor().col(), 20);
+        // Start with scroll at 0
+        app.horizontal_scroll_offset = 0;
+        let visible_width = 10;
+
+        app.adjust_horizontal_scroll(visible_width);
+
+        // Scroll should adjust so cursor is visible
+        // With margin of 4 (min(10, 5) - 1), cursor at 20 needs offset >= 20 - (10 - 4 - 1) = 15
+        assert!(app.horizontal_scroll_offset >= 15);
+    }
+
+    #[test]
+    fn test_adjust_horizontal_scroll_cursor_within_visible_area_no_change() {
+        let mut app = App::new();
+        // Create a line with some content
+        for c in "0123456789".chars() {
+            app.buffer.insert_char(c);
+        }
+        // Move cursor to middle (column 5)
+        app.buffer.move_cursor_to_line_start();
+        for _ in 0..5 {
+            app.buffer.move_cursor_right();
+        }
+        assert_eq!(app.buffer.cursor().col(), 5);
+        // Set scroll offset to 0
+        app.horizontal_scroll_offset = 0;
+        let visible_width = 20;
+
+        app.adjust_horizontal_scroll(visible_width);
+
+        // No change needed, cursor is within visible area
+        assert_eq!(app.horizontal_scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_adjust_horizontal_scroll_with_zero_visible_width() {
+        let mut app = App::new();
+        app.buffer.insert_char('a');
+        app.horizontal_scroll_offset = 5;
+
+        // visible_width of 0 should not crash and not change offset
+        app.adjust_horizontal_scroll(0);
+
+        // Scroll offset should remain unchanged
+        assert_eq!(app.horizontal_scroll_offset, 5);
+    }
+
+    #[test]
+    fn test_clear_all_resets_horizontal_scroll_offset() {
+        let mut app = App::new();
+        app.horizontal_scroll_offset = 10;
+
+        app.clear_all();
+
+        assert_eq!(app.horizontal_scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_app_new_initializes_horizontal_scroll_offset_to_zero() {
+        let app = App::new();
+        assert_eq!(app.horizontal_scroll_offset, 0);
     }
 }
