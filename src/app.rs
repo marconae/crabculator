@@ -16,6 +16,10 @@ pub struct App {
     /// Horizontal scroll offset (first visible column index, 0-based).
     /// Used for horizontal scrolling when content exceeds visible width.
     pub horizontal_scroll_offset: usize,
+    /// Whether the help overlay is currently visible.
+    pub help_visible: bool,
+    /// Scroll offset for the help overlay content (0-based).
+    pub help_scroll_offset: usize,
 }
 
 impl App {
@@ -45,6 +49,8 @@ impl App {
             context,
             scroll_offset: 0,
             horizontal_scroll_offset: 0,
+            help_visible: false,
+            help_scroll_offset: 0,
         }
     }
 
@@ -74,11 +80,14 @@ impl App {
     /// - Clears all variables from the evaluation context
     /// - Resets the scroll offset to 0
     /// - Resets the horizontal scroll offset to 0
+    /// - Closes the help overlay and resets its scroll offset
     pub fn clear_all(&mut self) {
         self.buffer.clear();
         self.context.clear();
         self.scroll_offset = 0;
         self.horizontal_scroll_offset = 0;
+        self.help_visible = false;
+        self.help_scroll_offset = 0;
     }
 
     /// Adjusts scroll offset to keep cursor within visible area.
@@ -140,6 +149,38 @@ impl App {
         if cursor_col >= self.horizontal_scroll_offset + visible_width - margin {
             self.horizontal_scroll_offset = cursor_col.saturating_sub(visible_width - margin - 1);
         }
+    }
+
+    /// Toggles the help overlay visibility.
+    ///
+    /// When opening the help overlay, resets the scroll offset to 0.
+    #[allow(clippy::missing_const_for_fn)] // Uses conditional logic
+    pub fn toggle_help(&mut self) {
+        self.help_visible = !self.help_visible;
+        if self.help_visible {
+            self.help_scroll_offset = 0;
+        }
+    }
+
+    /// Closes the help overlay.
+    pub const fn close_help(&mut self) {
+        self.help_visible = false;
+    }
+
+    /// Scrolls the help overlay content down by one line.
+    ///
+    /// # Arguments
+    /// * `content_height` - The total height of the help content in lines
+    #[allow(clippy::missing_const_for_fn)] // May need more logic in future
+    pub fn scroll_help_down(&mut self, content_height: usize) {
+        if self.help_scroll_offset < content_height.saturating_sub(1) {
+            self.help_scroll_offset += 1;
+        }
+    }
+
+    /// Scrolls the help overlay content up by one line.
+    pub const fn scroll_help_up(&mut self) {
+        self.help_scroll_offset = self.help_scroll_offset.saturating_sub(1);
     }
 }
 
@@ -356,6 +397,117 @@ mod tests {
 
         // Single line, scroll should stay at 0
         assert_eq!(app.scroll_offset, 0);
+    }
+
+    // ============================================================
+    // Help overlay state tests
+    // ============================================================
+
+    #[test]
+    fn test_app_new_initializes_help_visible_to_false() {
+        let app = App::new();
+        assert!(!app.help_visible);
+    }
+
+    #[test]
+    fn test_app_new_initializes_help_scroll_offset_to_zero() {
+        let app = App::new();
+        assert_eq!(app.help_scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_toggle_help_shows_overlay_when_hidden() {
+        let mut app = App::new();
+        assert!(!app.help_visible);
+
+        app.toggle_help();
+
+        assert!(app.help_visible);
+    }
+
+    #[test]
+    fn test_toggle_help_hides_overlay_when_visible() {
+        let mut app = App::new();
+        app.help_visible = true;
+
+        app.toggle_help();
+
+        assert!(!app.help_visible);
+    }
+
+    #[test]
+    fn test_toggle_help_resets_scroll_offset_when_opening() {
+        let mut app = App::new();
+        app.help_scroll_offset = 5;
+
+        app.toggle_help(); // Open help
+
+        assert_eq!(app.help_scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_close_help_hides_overlay() {
+        let mut app = App::new();
+        app.help_visible = true;
+
+        app.close_help();
+
+        assert!(!app.help_visible);
+    }
+
+    #[test]
+    fn test_close_help_when_already_hidden_stays_hidden() {
+        let mut app = App::new();
+        assert!(!app.help_visible);
+
+        app.close_help();
+
+        assert!(!app.help_visible);
+    }
+
+    #[test]
+    fn test_scroll_help_down_increases_offset() {
+        let mut app = App::new();
+        app.help_visible = true;
+        app.help_scroll_offset = 0;
+
+        app.scroll_help_down(10); // content_height
+
+        assert_eq!(app.help_scroll_offset, 1);
+    }
+
+    #[test]
+    fn test_scroll_help_up_decreases_offset() {
+        let mut app = App::new();
+        app.help_visible = true;
+        app.help_scroll_offset = 5;
+
+        app.scroll_help_up();
+
+        assert_eq!(app.help_scroll_offset, 4);
+    }
+
+    #[test]
+    fn test_scroll_help_up_does_not_go_below_zero() {
+        let mut app = App::new();
+        app.help_visible = true;
+        app.help_scroll_offset = 0;
+
+        app.scroll_help_up();
+
+        assert_eq!(app.help_scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_clear_all_resets_help_state() {
+        let mut app = App::new();
+        app.help_visible = true;
+        app.help_scroll_offset = 5;
+
+        app.clear_all();
+
+        assert!(!app.help_visible);
+        assert_eq!(app.help_scroll_offset, 0);
     }
 
     // ============================================================
