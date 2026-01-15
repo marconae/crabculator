@@ -1,0 +1,27 @@
+{
+  "env": {
+    "DISABLE_TELEMETRY": "1"
+  },
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "allow": [
+      "mcp__serena__*",
+      "mcp__context7__*",
+      "mcp__spox__*",
+      "Bash(mkdir:*)",
+      "Bash(cargo:*)",
+      "Bash(spox:*)",
+      "WebSearch",
+      "WebFetch"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "enableAllProjectMcpServers": true,
+  "fileExclusions": [
+    "target/**",
+    ".serena/**",
+    ".fastembed_cache/**",
+    ".git/**"
+  ]
+}
