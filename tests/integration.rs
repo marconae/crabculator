@@ -6,7 +6,6 @@
 use crabculator::app::App;
 use crabculator::editor::Buffer;
 use crabculator::eval::{EvalContext, LineResult, evaluate_all_lines, evaluate_line};
-use evalexpr::Value;
 
 // ============================================================
 // App Lifecycle Tests
@@ -40,7 +39,7 @@ fn test_single_expression_evaluation() {
     let results = evaluate_all_lines(lines);
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0], LineResult::Value(Value::Int(8)));
+    assert_eq!(results[0], LineResult::Value(8.0));
 }
 
 /// Entering `a = 10` shows `10` and stores variable
@@ -53,10 +52,10 @@ fn test_variable_assignment() {
         result,
         LineResult::Assignment {
             name: "a".to_string(),
-            value: Value::Int(10),
+            value: 10.0,
         }
     );
-    assert_eq!(context.get_variable("a"), Some(&Value::Int(10)));
+    assert_eq!(context.get_variable("a"), Some(10.0));
 }
 
 /// Entering `a * 2` shows `20` (uses stored variable)
@@ -66,7 +65,7 @@ fn test_variable_reference() {
     let results = evaluate_all_lines(lines);
 
     assert_eq!(results.len(), 2);
-    assert_eq!(results[1], LineResult::Value(Value::Int(20)));
+    assert_eq!(results[1], LineResult::Value(20.0));
 }
 
 /// Entering invalid expression returns error
@@ -202,14 +201,14 @@ fn test_multiline_calculation() {
 
     // base = 100
     assert!(matches!(&results[0], LineResult::Assignment { name, value }
-        if name == "base" && *value == Value::Int(100)));
+        if name == "base" && (*value - 100.0).abs() < f64::EPSILON));
 
     // rate = 0.15
     assert!(matches!(&results[1], LineResult::Assignment { name, value }
-        if name == "rate" && *value == Value::Float(0.15)));
+        if name == "rate" && (*value - 0.15).abs() < f64::EPSILON));
 
     // base * rate = 15.0
-    assert_eq!(results[2], LineResult::Value(Value::Float(15.0)));
+    assert_eq!(results[2], LineResult::Value(15.0));
 }
 
 /// Expressions with parentheses
@@ -218,16 +217,16 @@ fn test_expression_with_parentheses() {
     let lines = ["(5 + 3) * 2"];
     let results = evaluate_all_lines(lines);
 
-    assert_eq!(results[0], LineResult::Value(Value::Int(16)));
+    assert_eq!(results[0], LineResult::Value(16.0));
 }
 
 /// Expressions with built-in functions
 #[test]
 fn test_expression_with_functions() {
-    let lines = ["math::sqrt(16)"];
+    let lines = ["sqrt(16)"];
     let results = evaluate_all_lines(lines);
 
-    assert_eq!(results[0], LineResult::Value(Value::Float(4.0)));
+    assert_eq!(results[0], LineResult::Value(4.0));
 }
 
 /// Error in one line doesn't affect other lines
@@ -236,9 +235,9 @@ fn test_error_isolation() {
     let lines = ["5 + 3", "undefined_var", "10 - 2"];
     let results = evaluate_all_lines(lines);
 
-    assert_eq!(results[0], LineResult::Value(Value::Int(8)));
+    assert_eq!(results[0], LineResult::Value(8.0));
     assert!(matches!(results[1], LineResult::Error(_)));
-    assert_eq!(results[2], LineResult::Value(Value::Int(8)));
+    assert_eq!(results[2], LineResult::Value(8.0));
 }
 
 // ============================================================
@@ -517,9 +516,9 @@ fn test_variable_name_with_q_works() {
     assert_eq!(results.len(), 2);
     // qty = 5 should be an assignment
     assert!(matches!(&results[0], LineResult::Assignment { name, value }
-        if name == "qty" && *value == Value::Int(5)));
+        if name == "qty" && (*value - 5.0).abs() < f64::EPSILON));
     // qty * 2 should equal 10
-    assert_eq!(results[1], LineResult::Value(Value::Int(10)));
+    assert_eq!(results[1], LineResult::Value(10.0));
 }
 
 /// Test expressions containing 'q' character in various positions
