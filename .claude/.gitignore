@@ -6,3 +6,6 @@ agents/spox-*.md
 
 # Spox slash commands directory
 commands/spox/
+
+# Spox rule files
+rules/spox/
