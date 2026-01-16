@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/crabculator-logo.svg" alt="CrabCulator Logo" width="400">
+<img src="assets/crabculator-logo.svg" alt="CrabCulator Logo" width="200">
 
 # CrabCulator
 
@@ -30,6 +30,18 @@ type.
 
 ## Installation
 
+### Quick install (Linux/macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/marconae/crabculator/main/install.sh | bash
+```
+
+This installs to `~/.local/bin` by default. Set `INSTALL_DIR` to change:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/marconae/crabculator/main/install.sh | INSTALL_DIR=/usr/local/bin bash
+```
+
 ### From source
 
 Requires Rust 2024 edition.
@@ -41,12 +53,6 @@ cargo build --release
 ```
 
 The binary will be available at `target/release/crabculator`.
-
-### Run directly
-
-```bash
-cargo run --release
-```
 
 ## Usage
 
@@ -133,11 +139,10 @@ hypotenuse = sqrt(a^2 + b^2)    → 5
 
 ## Platform Support
 
-Crabculator works on:
+Pre-built binaries are available for:
 
-- Linux
-- macOS
-- Windows
+- Linux (x86_64, aarch64)
+- macOS (x86_64, Apple Silicon)
 
 **Requirements:**
 
