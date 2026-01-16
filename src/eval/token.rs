@@ -345,13 +345,13 @@ mod tests {
     #[test]
     fn test_tokenize_large_integer() {
         let tokens = tokenize("1234567890").unwrap();
-        assert_eq!(tokens, vec![Token::Number(1234567890.0)]);
+        assert_eq!(tokens, vec![Token::Number(1_234_567_890.0)]);
     }
 
     #[test]
     fn test_tokenize_float() {
-        let tokens = tokenize("3.14").unwrap();
-        assert_eq!(tokens, vec![Token::Number(3.14)]);
+        let tokens = tokenize("3.25").unwrap();
+        assert_eq!(tokens, vec![Token::Number(3.25)]);
     }
 
     #[test]
