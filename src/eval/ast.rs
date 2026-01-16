@@ -336,11 +336,11 @@ mod tests {
 
     #[test]
     fn test_parse_float() {
-        let tokens = vec![tok(Token::Number(3.14))];
+        let tokens = vec![tok(Token::Number(3.25))];
         let mut parser = Parser::new(tokens);
         let result = parser.parse();
 
-        assert_eq!(result.unwrap(), Expr::Number(3.14));
+        assert_eq!(result.unwrap(), Expr::Number(3.25));
     }
 
     #[test]
