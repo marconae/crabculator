@@ -9,3 +9,6 @@ commands/spox/
 
 # Spox rule files
 rules/spox/
+
+# Local CLAUDE.md
+CLAUE.local.md
