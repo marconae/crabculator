@@ -82,6 +82,11 @@ fn main() -> io::Result<()> {
                         app.buffer.delete_char_at();
                         should_save = true;
                     }
+                    KeyCode::Left | KeyCode::Right
+                        if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        app.toggle_memory_pane_position();
+                    }
                     KeyCode::Left => {
                         app.buffer.move_cursor_left();
                     }

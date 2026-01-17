@@ -36,11 +36,18 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     let areas = create_main_layout(frame.area());
 
     // Split content area into input and results panels (80/20)
-    let panels = create_panel_layout().split(areas.content_area);
+    let panels = create_panel_layout(app.memory_pane_left).split(areas.content_area);
+
+    // Determine which panel index is input and which is memory based on pane position
+    let (input_panel_idx, memory_panel_idx) = if app.memory_pane_left {
+        (1, 0) // Input on right, memory on left
+    } else {
+        (0, 1) // Input on left, memory on right
+    };
 
     // Calculate visible dimensions (area minus borders)
-    let visible_height = panels[0].height.saturating_sub(2) as usize;
-    let visible_width = panels[0].width.saturating_sub(2) as usize;
+    let visible_height = panels[input_panel_idx].height.saturating_sub(2) as usize;
+    let visible_width = panels[input_panel_idx].width.saturating_sub(2) as usize;
 
     // Adjust scroll offsets to keep cursor visible
     app.adjust_scroll(visible_height);
@@ -58,14 +65,21 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // Render input panel with buffer content, error highlighting, and current line highlighting
     render_input_panel(
         frame,
-        panels[0],
+        panels[input_panel_idx],
         &app.buffer,
         app.scroll_offset,
         app.horizontal_scroll_offset,
     );
 
     // Render result panel with evaluation results and current line highlighting
-    render_result_panel(frame, panels[1], &results, current_row, app.scroll_offset);
+    render_result_panel(
+        frame,
+        panels[memory_panel_idx],
+        &results,
+        current_row,
+        app.scroll_offset,
+        app.memory_pane_left,
+    );
 
     // Render command bar at the bottom
     render_command_bar(frame, areas.command_bar);
@@ -93,7 +107,7 @@ mod tests {
 
     #[test]
     fn panel_layout_creates_two_chunks() {
-        let layout = create_panel_layout();
+        let layout = create_panel_layout(false);
         let area = Rect::new(0, 0, 100, 49);
         let chunks = layout.split(area);
 

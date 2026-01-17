@@ -154,7 +154,7 @@ const fn is_operator(c: char) -> bool {
 /// Colors:
 /// - Variables: Cyan
 /// - Numbers: White (default)
-/// - Operators: `DarkGray` (dimmed)
+/// - Operators: Gray (visible on both default and highlighted backgrounds)
 /// - Parentheses: Default
 /// - Functions: Cyan (like variables)
 /// - Whitespace: Default
@@ -163,7 +163,7 @@ pub fn token_style(token_type: &TokenType) -> Style {
     match token_type {
         TokenType::Variable | TokenType::Function => Style::default().fg(Color::Cyan),
         TokenType::Number => Style::default().fg(Color::White),
-        TokenType::Operator => Style::default().fg(Color::DarkGray),
+        TokenType::Operator => Style::default().fg(Color::Gray),
         TokenType::Parenthesis | TokenType::Whitespace => Style::default(),
     }
 }
@@ -501,8 +501,9 @@ mod tests {
 
     #[test]
     fn test_token_style_operator_is_dark_gray() {
+        // Operators use Gray (not DarkGray) to remain visible on DarkGray highlight
         let style = token_style(&TokenType::Operator);
-        assert_eq!(style.fg, Some(Color::DarkGray));
+        assert_eq!(style.fg, Some(Color::Gray));
     }
 
     #[test]
@@ -531,8 +532,8 @@ mod tests {
         assert_eq!(spans[0].style.fg, Some(Color::White));
         // " " - whitespace (default)
         assert_eq!(spans[1].style.fg, None);
-        // "+" - operator (dark gray)
-        assert_eq!(spans[2].style.fg, Some(Color::DarkGray));
+        // "+" - operator (gray)
+        assert_eq!(spans[2].style.fg, Some(Color::Gray));
         // " " - whitespace (default)
         assert_eq!(spans[3].style.fg, None);
         // "3" - number (white)
@@ -549,8 +550,8 @@ mod tests {
         assert_eq!(spans[0].style.fg, Some(Color::Cyan));
         // " " - whitespace (default)
         assert_eq!(spans[1].style.fg, None);
-        // "=" - operator (dark gray)
-        assert_eq!(spans[2].style.fg, Some(Color::DarkGray));
+        // "=" - operator (gray)
+        assert_eq!(spans[2].style.fg, Some(Color::Gray));
         // " " - whitespace (default)
         assert_eq!(spans[3].style.fg, None);
         // "10" - number (white)

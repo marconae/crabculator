@@ -22,7 +22,7 @@ pub fn state_dir() -> Option<PathBuf> {
 
 /// Returns the path to the state file.
 ///
-/// Returns `~/.crabculator/state.json` on all platforms.
+/// Returns `~/.crabculator/state.txt` on all platforms.
 ///
 /// # Returns
 ///
@@ -30,7 +30,7 @@ pub fn state_dir() -> Option<PathBuf> {
 /// home directory cannot be determined.
 #[must_use]
 pub fn state_file() -> Option<PathBuf> {
-    state_dir().map(|dir| dir.join("state.json"))
+    state_dir().map(|dir| dir.join("state.txt"))
 }
 
 #[cfg(test)]
@@ -97,11 +97,11 @@ mod tests {
     }
 
     #[test]
-    fn state_file_ends_with_state_json() {
+    fn state_file_ends_with_state_txt() {
         let file = state_file().expect("state_file should return Some");
         assert!(
-            file.ends_with("state.json"),
-            "state_file should end with state.json, got: {file:?}",
+            file.ends_with("state.txt"),
+            "state_file should end with state.txt, got: {file:?}",
         );
     }
 
@@ -152,8 +152,8 @@ mod tests {
         let file = state_file().expect("state_file should return Some");
         let home = dirs::home_dir().expect("home_dir should be available");
 
-        // Verify the exact path is home/.crabculator/state.json
-        let expected = home.join(".crabculator").join("state.json");
+        // Verify the exact path is home/.crabculator/state.txt
+        let expected = home.join(".crabculator").join("state.txt");
         assert_eq!(
             file, expected,
             "state_file {file:?} should equal {expected:?}",

@@ -245,20 +245,20 @@ fn test_error_isolation() {
 // ============================================================
 
 use crabculator::storage::{PersistedState, load_from_path, save_to_path};
-use std::collections::HashMap;
 use tempfile::tempdir;
 
-/// State persistence roundtrip: save state, reload, verify restored
+/// State persistence roundtrip: save buffer lines, reload, verify restored
 ///
 /// This test simulates the app lifecycle:
-/// - Start app -> edit buffer -> define variables -> quit -> restart -> state restored
+/// - Start app -> edit buffer -> quit -> restart -> buffer restored
+/// Note: Variables are no longer persisted; they're recomputed from buffer evaluation.
 #[test]
 fn test_state_persistence_roundtrip() {
     // Create a temporary directory for the state file
     let dir = tempdir().expect("should create temp dir");
-    let state_file = dir.path().join("state.json");
+    let state_file = dir.path().join("state.txt");
 
-    // === Simulate first session: user edits buffer and defines variables ===
+    // === Simulate first session: user edits buffer ===
 
     // Buffer content representing expressions the user typed
     let buffer_lines = vec![
@@ -268,14 +268,8 @@ fn test_state_persistence_roundtrip() {
         "total = price + (price * tax_rate)".to_string(),
     ];
 
-    // Variables that would be defined after evaluating the expressions
-    let mut variables = HashMap::new();
-    variables.insert("price".to_string(), 100.0);
-    variables.insert("tax_rate".to_string(), 0.15);
-    variables.insert("total".to_string(), 115.0);
-
     // Create state and save (simulates quit)
-    let original_state = PersistedState::new(buffer_lines, variables.clone());
+    let original_state = PersistedState::new(buffer_lines);
     save_to_path(&original_state, &state_file).expect("save should succeed");
 
     // === Simulate restart: load state ===
@@ -299,13 +293,6 @@ fn test_state_persistence_roundtrip() {
         "total = price + (price * tax_rate)"
     );
 
-    // === Verify variables are restored ===
-
-    assert_eq!(loaded_state.variables.len(), 3, "should have 3 variables");
-    assert_eq!(loaded_state.variables.get("price"), Some(&100.0));
-    assert_eq!(loaded_state.variables.get("tax_rate"), Some(&0.15));
-    assert_eq!(loaded_state.variables.get("total"), Some(&115.0));
-
     // === Verify complete state equality ===
 
     assert_eq!(
@@ -318,7 +305,7 @@ fn test_state_persistence_roundtrip() {
 #[test]
 fn test_state_persistence_empty_state() {
     let dir = tempdir().expect("should create temp dir");
-    let state_file = dir.path().join("state.json");
+    let state_file = dir.path().join("state.txt");
 
     // Save empty state (fresh start scenario)
     let original_state = PersistedState::empty();
@@ -330,58 +317,28 @@ fn test_state_persistence_empty_state() {
         .expect("state file should exist");
 
     assert!(loaded_state.buffer_lines.is_empty());
-    assert!(loaded_state.variables.is_empty());
     assert_eq!(original_state, loaded_state);
 }
 
-/// State persistence preserves variable precision
+/// State persistence preserves buffer content with special characters
 #[test]
-fn test_state_persistence_variable_precision() {
+fn test_state_persistence_special_characters() {
     let dir = tempdir().expect("should create temp dir");
-    let state_file = dir.path().join("state.json");
+    let state_file = dir.path().join("state.txt");
 
-    // Use variables with floating point values that need precision
-    let mut variables = HashMap::new();
-    variables.insert("pi".to_string(), std::f64::consts::PI);
-    variables.insert("e".to_string(), std::f64::consts::E);
-    variables.insert("small".to_string(), 0.000_001);
-    variables.insert("large".to_string(), 1_000_000.123_456);
-
-    let original_state = PersistedState::new(vec!["pi = 3.14159...".to_string()], variables);
+    // Use buffer lines with special characters
+    let original_state = PersistedState::new(vec![
+        "pi = 3.14159".to_string(),
+        "e = 2.71828".to_string(),
+        "result = pi * e".to_string(),
+    ]);
     save_to_path(&original_state, &state_file).expect("save should succeed");
 
     let loaded_state = load_from_path(&state_file)
         .expect("load should succeed")
         .expect("state file should exist");
 
-    // Verify precision is maintained
-    let loaded_pi = loaded_state.variables.get("pi").expect("pi should exist");
-    let loaded_e = loaded_state.variables.get("e").expect("e should exist");
-    let loaded_small = loaded_state
-        .variables
-        .get("small")
-        .expect("small should exist");
-    let loaded_large = loaded_state
-        .variables
-        .get("large")
-        .expect("large should exist");
-
-    assert!(
-        (loaded_pi - std::f64::consts::PI).abs() < f64::EPSILON * 10.0,
-        "pi should maintain precision"
-    );
-    assert!(
-        (loaded_e - std::f64::consts::E).abs() < f64::EPSILON * 10.0,
-        "e should maintain precision"
-    );
-    assert!(
-        (loaded_small - 0.000_001).abs() < f64::EPSILON,
-        "small values should maintain precision"
-    );
-    assert!(
-        (loaded_large - 1_000_000.123_456).abs() < 0.000_001,
-        "large values should maintain precision"
-    );
+    assert_eq!(original_state, loaded_state);
 }
 
 /// Bug test: Variables MUST be stored in app.context after buffer evaluation
@@ -438,50 +395,40 @@ fn test_app_context_stores_variables_after_evaluation() {
     );
 }
 
-/// Bug test: Full persistence flow captures variables from evaluation
+/// Test: Full persistence flow saves buffer lines only
 ///
-/// This is an end-to-end test that verifies the complete persistence flow:
+/// This is an end-to-end test that verifies the simplified persistence flow:
 /// 1. User types expressions with variable assignments
-/// 2. App evaluates expressions (updating context)
-/// 3. State extraction and persistence correctly captures variables
+/// 2. Buffer lines are saved to state file
+/// 3. Variables are recomputed from evaluation on next load
 #[test]
-fn test_save_state_captures_evaluated_variables() {
+fn test_save_state_saves_buffer_lines() {
     use crabculator::editor::Buffer;
-    use crabculator::eval::{EvalContext, evaluate_all_lines_with_context};
 
     let dir = tempdir().expect("should create temp dir");
-    let state_file = dir.path().join("state.json");
+    let state_file = dir.path().join("state.txt");
 
-    // Create fresh buffer and context
+    // Create fresh buffer
     let mut buffer = Buffer::new();
-    let mut context = EvalContext::new();
 
     // Type "x = 42"
     for c in "x = 42".chars() {
         buffer.insert_char(c);
     }
 
-    // Evaluate (this should update context)
-    let _ =
-        evaluate_all_lines_with_context(buffer.lines().iter().map(String::as_str), &mut context);
-
     // Save state (simulating app.save_state())
-    let state = PersistedState::new(buffer.lines().to_vec(), context.extract_variables());
+    let state = PersistedState::new(buffer.lines().to_vec());
     save_to_path(&state, &state_file).expect("save should succeed");
 
-    // Load and verify variables were persisted
+    // Load and verify buffer lines were persisted
     let loaded = load_from_path(&state_file)
         .expect("load should succeed")
         .expect("state should exist");
 
-    assert!(
-        loaded.variables.contains_key("x"),
-        "Variable 'x' must be persisted in state file"
-    );
     assert_eq!(
-        loaded.variables.get("x"),
-        Some(&42.0),
-        "Variable 'x' should be 42.0 in state file"
+        loaded.buffer_lines,
+        vec!["x = 42"],
+        "Buffer lines should be persisted"
     );
 }
 

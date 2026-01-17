@@ -20,37 +20,31 @@ pub struct App {
     pub help_visible: bool,
     /// Scroll offset for the help overlay content (0-based).
     pub help_scroll_offset: usize,
+    /// Whether the memory pane is positioned on the left side.
+    pub memory_pane_left: bool,
 }
 
 impl App {
     /// Creates a new application instance with running state set to true.
     ///
-    /// Attempts to load persisted state from disk. If state exists, the buffer
-    /// and context are restored. Otherwise, defaults are used.
+    /// Attempts to load persisted buffer lines from disk. Variables are not
+    /// loaded; they are computed from evaluating the buffer lines.
     #[must_use]
     pub fn new() -> Self {
-        // Try to load persisted state
-        let (buffer, context) = match storage::load() {
-            Ok(Some(state)) => {
-                let buffer = Buffer::from_lines(state.buffer_lines);
-                let mut context = EvalContext::new();
-                context.load_variables(&state.variables);
-                (buffer, context)
-            }
-            Ok(None) | Err(_) => {
-                // No state file or error loading - use defaults
-                (Buffer::new(), EvalContext::new())
-            }
+        let buffer = match storage::load() {
+            Ok(Some(state)) => Buffer::from_lines(state.buffer_lines),
+            Ok(None) | Err(_) => Buffer::new(),
         };
 
         Self {
             running: true,
             buffer,
-            context,
+            context: EvalContext::new(),
             scroll_offset: 0,
             horizontal_scroll_offset: 0,
             help_visible: false,
             help_scroll_offset: 0,
+            memory_pane_left: true,
         }
     }
 
@@ -61,14 +55,12 @@ impl App {
 
     /// Saves the current state to disk.
     ///
-    /// Persists the buffer lines and variables to the state file.
+    /// Persists the buffer lines to the state file. Variables are not saved;
+    /// they are computed from evaluating the buffer lines on next load.
     /// Errors are silently ignored (state persistence is best-effort).
     pub fn save_state(&self) {
-        let state = storage::PersistedState::new(
-            self.buffer.lines().iter().map(String::clone).collect(),
-            self.context.extract_variables(),
-        );
-        // Ignore errors - state persistence is best-effort
+        let state =
+            storage::PersistedState::new(self.buffer.lines().iter().map(String::clone).collect());
         let _ = storage::save(&state);
     }
 
@@ -182,6 +174,11 @@ impl App {
     pub const fn scroll_help_up(&mut self) {
         self.help_scroll_offset = self.help_scroll_offset.saturating_sub(1);
     }
+
+    /// Toggles the memory pane position between left and right.
+    pub const fn toggle_memory_pane_position(&mut self) {
+        self.memory_pane_left = !self.memory_pane_left;
+    }
 }
 
 impl Default for App {
@@ -228,12 +225,11 @@ mod tests {
     }
 
     #[test]
-    fn test_app_save_state_extracts_buffer_and_context() {
+    fn test_app_save_state_extracts_buffer() {
         // Create an app and modify its state
         let mut app = App::new();
         app.buffer.insert_char('a');
         app.buffer.insert_char('b');
-        app.context.set_variable("x", 42.0);
 
         // save_state should not panic
         app.save_state();
@@ -412,6 +408,29 @@ mod tests {
     fn test_app_new_initializes_help_scroll_offset_to_zero() {
         let app = App::new();
         assert_eq!(app.help_scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_app_new_initializes_memory_pane_left_to_true() {
+        let app = App::new();
+        assert!(app.memory_pane_left);
+    }
+
+    #[test]
+    fn test_toggle_memory_pane_position_changes_from_left_to_right() {
+        let mut app = App::new();
+        assert!(app.memory_pane_left);
+        app.toggle_memory_pane_position();
+        assert!(!app.memory_pane_left);
+    }
+
+    #[test]
+    fn test_toggle_memory_pane_position_changes_from_right_to_left() {
+        let mut app = App::new();
+        app.toggle_memory_pane_position();
+        assert!(!app.memory_pane_left);
+        app.toggle_memory_pane_position();
+        assert!(app.memory_pane_left);
     }
 
     #[test]

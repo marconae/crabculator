@@ -46,14 +46,22 @@ pub fn create_main_layout(area: Rect) -> LayoutAreas {
 
 /// Creates the horizontal panel layout with 80/20 split.
 ///
-/// The layout divides the content area into:
-/// - Left panel (80%): Input/expression area
-/// - Right panel (20%): Results area
+/// The layout divides the content area into two panels:
+/// - Input/expression area (80%)
+/// - Memory/results area (20%)
+///
+/// # Arguments
+/// * `memory_pane_left` - When true, memory pane is on left (20%/80%); when false, on right (80%/20%)
 #[must_use]
-pub fn create_panel_layout() -> Layout {
+pub fn create_panel_layout(memory_pane_left: bool) -> Layout {
+    let constraints = if memory_pane_left {
+        [Constraint::Percentage(20), Constraint::Percentage(80)]
+    } else {
+        [Constraint::Percentage(80), Constraint::Percentage(20)]
+    };
     Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
+        .constraints(constraints)
 }
 
 #[cfg(test)]
@@ -128,7 +136,7 @@ mod tests {
 
     #[test]
     fn panel_layout_creates_two_chunks() {
-        let layout = create_panel_layout();
+        let layout = create_panel_layout(false);
         let area = Rect::new(0, 0, 100, 49);
         let chunks = layout.split(area);
 
@@ -136,20 +144,32 @@ mod tests {
     }
 
     #[test]
-    fn panel_layout_splits_80_20() {
-        let layout = create_panel_layout();
+    fn panel_layout_splits_80_20_memory_right() {
+        let layout = create_panel_layout(false);
         let area = Rect::new(0, 0, 100, 49);
         let chunks = layout.split(area);
 
-        // Left panel should be 80% of width
-        assert_eq!(chunks[0].width, 80, "Left panel should be 80% width");
-        // Right panel should be 20% of width
-        assert_eq!(chunks[1].width, 20, "Right panel should be 20% width");
+        // Input panel (left) should be 80% of width
+        assert_eq!(chunks[0].width, 80, "Input panel should be 80% width");
+        // Memory panel (right) should be 20% of width
+        assert_eq!(chunks[1].width, 20, "Memory panel should be 20% width");
+    }
+
+    #[test]
+    fn panel_layout_splits_20_80_memory_left() {
+        let layout = create_panel_layout(true);
+        let area = Rect::new(0, 0, 100, 49);
+        let chunks = layout.split(area);
+
+        // Memory panel (left) should be 20% of width
+        assert_eq!(chunks[0].width, 20, "Memory panel should be 20% width");
+        // Input panel (right) should be 80% of width
+        assert_eq!(chunks[1].width, 80, "Input panel should be 80% width");
     }
 
     #[test]
     fn panel_layout_preserves_height() {
-        let layout = create_panel_layout();
+        let layout = create_panel_layout(false);
         let area = Rect::new(0, 0, 100, 49);
         let chunks = layout.split(area);
 
@@ -159,7 +179,7 @@ mod tests {
 
     #[test]
     fn panel_layout_is_horizontal() {
-        let layout = create_panel_layout();
+        let layout = create_panel_layout(false);
         let area = Rect::new(0, 0, 100, 49);
         let chunks = layout.split(area);
 

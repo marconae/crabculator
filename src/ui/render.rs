@@ -7,7 +7,7 @@
 
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Paragraph},
@@ -16,6 +16,9 @@ use ratatui::{
 use crate::editor::Buffer;
 use crate::eval::{EvalError, LineResult, evaluate_all_lines};
 use crate::ui::highlight::{highlight_line, highlight_line_with_offset};
+
+/// Rusty-red accent color used for borders, errors, and keyboard shortcuts.
+const ACCENT_COLOR: Color = Color::Rgb(139, 69, 19);
 
 /// Formats a `LineResult` for display in the result panel.
 ///
@@ -78,7 +81,7 @@ pub fn build_input_lines<'a>(lines: &'a [String], results: &'a [LineResult]) -> 
         if let Some(LineResult::Error(err)) = result {
             let error_line = Line::from(Span::styled(
                 format!("  ^ {}", err.message()),
-                Style::default().fg(Color::Red),
+                Style::default().fg(ACCENT_COLOR),
             ));
             output.push(error_line);
         }
@@ -93,7 +96,7 @@ pub fn build_input_lines<'a>(lines: &'a [String], results: &'a [LineResult]) -> 
 /// Otherwise, the entire line is underlined.
 fn build_error_line<'a>(line_text: &'a str, error: &EvalError) -> Line<'a> {
     let error_style = Style::default()
-        .fg(Color::Red)
+        .fg(ACCENT_COLOR)
         .add_modifier(Modifier::UNDERLINED);
 
     error.span().map_or_else(
@@ -143,7 +146,7 @@ pub fn build_result_lines(results: &[LineResult]) -> Vec<Line<'_>> {
         .map(|result| {
             format_result(result).map_or_else(
                 || Line::from(""),
-                |text| Line::from(Span::styled(text, Style::default().fg(Color::Green))),
+                |text| Line::from(Span::styled(text, Style::default().fg(Color::White))),
             )
         })
         .collect()
@@ -198,7 +201,7 @@ pub fn build_visible_input_lines_with_highlight<'a>(
         if let Some(LineResult::Error(err)) = result {
             let error_line = Line::from(Span::styled(
                 format!("  ^ {}", err.message()),
-                Style::default().fg(Color::Red),
+                Style::default().fg(ACCENT_COLOR),
             ));
             output.push(error_line);
         }
@@ -211,6 +214,7 @@ pub fn build_visible_input_lines_with_highlight<'a>(
 ///
 /// Combines scrolling support with current line highlighting for the results panel.
 /// Lines are padded to fill the panel width for full-width highlighting.
+/// Content is right-aligned when memory pane is on the left side.
 ///
 /// # Arguments
 /// * `results` - The evaluation results to display
@@ -218,6 +222,7 @@ pub fn build_visible_input_lines_with_highlight<'a>(
 /// * `visible_height` - The number of visible lines in the viewport
 /// * `current_row` - The row index where the cursor is positioned (0-indexed)
 /// * `panel_width` - The width of the panel (excluding borders) for full-width highlighting
+/// * `memory_pane_left` - Whether the memory pane is on the left side (for right-alignment)
 ///
 /// # Returns
 /// A vector of styled `Line` objects for the visible portion only.
@@ -228,6 +233,7 @@ pub fn build_visible_result_lines_with_highlight(
     visible_height: usize,
     current_row: usize,
     panel_width: usize,
+    memory_pane_left: bool,
 ) -> Vec<Line<'_>> {
     let highlight_style = current_line_highlight_style();
 
@@ -246,13 +252,26 @@ pub fn build_visible_result_lines_with_highlight(
             let content_width = text.len();
 
             // Build spans with padding for full-width highlight
-            let mut spans = if text.is_empty() {
+            // Right-align content when memory pane is on the left
+            let mut spans = if memory_pane_left && content_width < panel_width {
+                // Add leading padding for right alignment
+                let padding = " ".repeat(panel_width - content_width);
+                if text.is_empty() {
+                    vec![Span::raw(padding)]
+                } else {
+                    vec![
+                        Span::raw(padding),
+                        Span::styled(text, Style::default().fg(Color::White)),
+                    ]
+                }
+            } else if text.is_empty() {
                 vec![]
             } else {
-                vec![Span::styled(text, Style::default().fg(Color::Green))]
+                vec![Span::styled(text, Style::default().fg(Color::White))]
             };
 
-            if is_current_line && content_width < panel_width {
+            // Add trailing padding for left-aligned content (when pane is on right)
+            if !memory_pane_left && is_current_line && content_width < panel_width {
                 let padding = " ".repeat(panel_width - content_width);
                 spans.push(Span::raw(padding));
             }
@@ -270,10 +289,10 @@ pub fn build_visible_result_lines_with_highlight(
 
 /// Returns the style used for highlighting the current line.
 ///
-/// Uses a subtle dark gray background that works well in terminal themes.
+/// Uses a dark grey background color that matches the command bar.
 #[must_use]
 pub fn current_line_highlight_style() -> Style {
-    Style::default().bg(Color::Rgb(50, 50, 50))
+    Style::default().bg(Color::DarkGray)
 }
 
 /// Builds styled text lines for the input panel with current line highlighting.
@@ -321,7 +340,7 @@ pub fn build_input_lines_with_highlight<'a>(
         if let Some(LineResult::Error(err)) = result {
             let error_line = Line::from(Span::styled(
                 format!("  ^ {}", err.message()),
-                Style::default().fg(Color::Red),
+                Style::default().fg(ACCENT_COLOR),
             ));
             output.push(error_line);
         }
@@ -356,7 +375,7 @@ pub fn build_result_lines_with_highlight(
 
             let mut line = format_result(result).map_or_else(
                 || Line::from(""),
-                |text| Line::from(Span::styled(text, Style::default().fg(Color::Green))),
+                |text| Line::from(Span::styled(text, Style::default().fg(Color::White))),
             );
 
             if is_current_line {
@@ -377,11 +396,15 @@ pub fn build_result_lines_with_highlight(
 /// The gutter width includes space for the line numbers (right-aligned)
 /// plus one space for separation from the content.
 ///
+/// The minimum width is 3 to align with the title "🦀 crabculator":
+/// - 2 columns for the line number (aligning with the emoji width)
+/// - 1 column for the space separator (aligning with space after emoji)
+///
 /// # Arguments
 /// * `line_count` - The total number of lines in the buffer
 ///
 /// # Returns
-/// The width in characters needed for the gutter (digits + 1 space).
+/// The width in characters needed for the gutter (minimum 3, or digits + 1 space).
 #[must_use]
 pub const fn calculate_gutter_width(line_count: usize) -> usize {
     // Calculate digits needed for the largest line number using integer math
@@ -398,7 +421,9 @@ pub const fn calculate_gutter_width(line_count: usize) -> usize {
         count
     };
     // Add 1 for the trailing space separator
-    digits + 1
+    let width = digits + 1;
+    // Minimum width of 3 to align with title emoji (2 columns) + space (1 column)
+    if width < 3 { 3 } else { width }
 }
 
 /// Formats a line number for display in the gutter.
@@ -422,11 +447,12 @@ pub fn format_line_number(line_number: usize, gutter_width: usize) -> String {
 /// Returns the style for the line number gutter.
 ///
 /// The gutter uses a subtle dimmed foreground color to keep line numbers
-/// visible but unobtrusive. No distinct background is used, allowing the
-/// gutter to blend with the content area.
+/// visible but unobtrusive. Uses `Gray` (lighter than `DarkGray`) to ensure
+/// visibility even when the current line highlight (`DarkGray` background)
+/// is applied.
 #[must_use]
 pub fn gutter_style() -> Style {
-    Style::default().fg(Color::DarkGray)
+    Style::default().fg(Color::Gray)
 }
 
 /// Builds spans for a line with error highlighting and horizontal offset support.
@@ -447,7 +473,7 @@ fn build_error_spans_with_offset<'a>(
     visible_width: usize,
 ) -> Vec<Span<'a>> {
     let error_style = Style::default()
-        .fg(Color::Red)
+        .fg(ACCENT_COLOR)
         .add_modifier(Modifier::UNDERLINED);
 
     // Calculate the visible slice of the line
@@ -579,7 +605,7 @@ pub fn build_visible_input_lines_with_gutter<'a>(
             let indent = " ".repeat(gutter_width);
             let error_line = Line::from(Span::styled(
                 format!("{}  ^ {}", indent, err.message()),
-                Style::default().fg(Color::Red),
+                Style::default().fg(ACCENT_COLOR),
             ));
             output.push(error_line);
         }
@@ -638,9 +664,9 @@ fn term_value_supports_emoji(term: &str) -> bool {
 #[must_use]
 fn calculator_panel_title() -> &'static str {
     if terminal_supports_emoji() {
-        "🦀CrabCalculator"
+        "🦀 crabculator"
     } else {
-        "CrabCalculator"
+        "crabculator"
     }
 }
 
@@ -658,44 +684,50 @@ fn calculator_panel_title() -> &'static str {
 #[must_use]
 const fn calculator_panel_title_with_emoji_support(supports_emoji: bool) -> &'static str {
     if supports_emoji {
-        "🦀CrabCalculator"
+        "🦀 crabculator"
     } else {
-        "CrabCalculator"
+        "crabculator"
     }
 }
 
-/// Creates a Block widget for the input panel with rounded borders and dark grey styling.
+/// Creates a Block widget for the input panel with title underline.
 ///
 /// # Returns
 /// A Block configured with:
 /// - Branded title with emoji (or without if emoji unsupported)
-/// - All borders enabled
-/// - Rounded border type
-/// - Dark grey border color
+/// - Full-width rusty-red underline border below title
 #[must_use]
 pub fn input_panel_block() -> Block<'static> {
     Block::default()
         .title(calculator_panel_title())
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::DarkGray))
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(ACCENT_COLOR))
 }
 
-/// Creates a Block widget for the result panel with rounded borders and dark grey styling.
+/// Creates a Block widget for the memory panel with dark-grey background and conditional red border.
+///
+/// # Arguments
+/// * `memory_pane_left` - When true, red border on right side and title right-aligned; when false, red border on left side and title left-aligned
 ///
 /// # Returns
 /// A Block configured with:
-/// - Title "Memory"
-/// - All borders enabled
-/// - Rounded border type
-/// - Dark grey border color
+/// - Title "Memory" (right-aligned when pane is on left, left-aligned when on right)
+/// - Dark-grey background
+/// - Full-width rusty-red underline border below title
+/// - Red border on the side adjacent to the input panel
 #[must_use]
-pub fn result_panel_block() -> Block<'static> {
+pub fn memory_panel_block(memory_pane_left: bool) -> Block<'static> {
+    let (side_border, title_alignment) = if memory_pane_left {
+        (Borders::RIGHT, Alignment::Right)
+    } else {
+        (Borders::LEFT, Alignment::Left)
+    };
     Block::default()
         .title("Memory")
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::DarkGray))
+        .title_alignment(title_alignment)
+        .borders(Borders::TOP | side_border)
+        .border_style(Style::default().fg(ACCENT_COLOR))
+        .style(Style::default().bg(Color::Rgb(30, 30, 30)))
 }
 
 /// Renders the input panel with buffer content, error highlighting, current line highlighting,
@@ -720,8 +752,11 @@ pub fn render_input_panel(
     // Get cursor row for highlighting
     let cursor_row = buffer.cursor().row();
 
-    // Calculate visible height (area height minus borders)
-    let visible_height = area.height.saturating_sub(2) as usize;
+    // Calculate visible height (area height minus title row, no borders)
+    let visible_height = area.height.saturating_sub(1) as usize;
+
+    // Calculate visible width (no borders)
+    let visible_width = area.width as usize;
 
     // Build styled lines for visible portion with line number gutter
     let (styled_lines, gutter_width) = build_visible_input_lines_with_gutter(
@@ -731,15 +766,15 @@ pub fn render_input_panel(
         visible_height,
         cursor_row,
         horizontal_scroll_offset,
-        area.width.saturating_sub(2) as usize, // visible_width minus borders
+        visible_width,
     );
 
-    // Create the paragraph widget with rounded borders and dark grey styling
+    // Create the paragraph widget with title but no borders
     let paragraph = Paragraph::new(Text::from(styled_lines)).block(input_panel_block());
 
     frame.render_widget(paragraph, area);
 
-    // Set cursor position (inside the border, accounting for gutter)
+    // Set cursor position (accounting for title row and gutter, no borders)
     let cursor_col = buffer.cursor().col();
 
     // Account for error messages that push lines down (within visible range only)
@@ -754,16 +789,16 @@ pub fn render_input_panel(
         }
     }
 
-    // Position cursor accounting for border (1 pixel), gutter width, and horizontal scroll
+    // Position cursor: area.x + gutter + cursor_col (no border offset)
+    // For y: area.y + 1 (title row) + actual_row
     let adjusted_cursor_col = cursor_col.saturating_sub(horizontal_scroll_offset);
     let cursor_x = area.x
-        + 1
         + u16::try_from(gutter_width).unwrap_or(0)
         + u16::try_from(adjusted_cursor_col).unwrap_or(0);
     let cursor_y = area.y + 1 + u16::try_from(actual_row).unwrap_or(0);
 
     // Only set cursor if it's within the visible area
-    if cursor_x < area.x + area.width - 1 && cursor_y < area.y + area.height - 1 {
+    if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
         frame.set_cursor_position((cursor_x, cursor_y));
     }
 }
@@ -780,12 +815,14 @@ pub fn render_input_panel(
 /// * `results` - The evaluation results to display
 /// * `current_row` - The row index where the cursor is positioned (0-indexed)
 /// * `scroll_offset` - The first visible line index (0-based)
+/// * `memory_pane_left` - Whether the memory pane is on the left side
 pub fn render_result_panel(
     frame: &mut Frame,
     area: Rect,
     results: &[LineResult],
     current_row: usize,
     scroll_offset: usize,
+    memory_pane_left: bool,
 ) {
     // Calculate visible height (area height minus borders)
     let visible_height = area.height.saturating_sub(2) as usize;
@@ -799,10 +836,12 @@ pub fn render_result_panel(
         visible_height,
         current_row,
         panel_width,
+        memory_pane_left,
     );
 
-    // Create the paragraph widget with rounded borders and dark grey styling
-    let paragraph = Paragraph::new(Text::from(styled_lines)).block(result_panel_block());
+    // Create the paragraph widget with memory panel styling
+    let paragraph =
+        Paragraph::new(Text::from(styled_lines)).block(memory_panel_block(memory_pane_left));
 
     frame.render_widget(paragraph, area);
 }
@@ -810,11 +849,11 @@ pub fn render_result_panel(
 /// Builds the styled text line for the command bar.
 ///
 /// Returns a Line containing all keyboard shortcuts with consistent styling.
-/// Keys are highlighted in yellow bold, descriptions are plain text.
+/// Keys are highlighted in rusty-red bold, descriptions are plain text.
 #[must_use]
 pub fn build_command_bar_text<'a>() -> Line<'a> {
     let key_style = Style::default()
-        .fg(Color::Yellow)
+        .fg(ACCENT_COLOR)
         .add_modifier(Modifier::BOLD);
 
     Line::from(vec![
@@ -824,6 +863,8 @@ pub fn build_command_bar_text<'a>() -> Line<'a> {
         Span::raw(": clear  "),
         Span::styled("CTRL+H", key_style),
         Span::raw(": help  "),
+        Span::styled("CTRL+←/→", key_style),
+        Span::raw(": move memory  "),
         Span::styled("↑↓", key_style),
         Span::raw(": history"),
     ])
@@ -956,7 +997,7 @@ pub const fn centered_rect(area: Rect, width_percent: u16, height_percent: u16) 
 pub fn build_help_content_lines(scroll_offset: usize, visible_height: usize) -> Vec<Line<'static>> {
     let all_lines = help_content_lines();
     let header_style = Style::default()
-        .fg(Color::Yellow)
+        .fg(Color::White)
         .add_modifier(Modifier::BOLD);
 
     let start = scroll_offset.min(all_lines.len());
@@ -1024,7 +1065,7 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, scroll_offset: usize) 
         .title(title)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(ACCENT_COLOR));
 
     let paragraph = Paragraph::new(content)
         .block(block)
@@ -1231,6 +1272,23 @@ mod tests {
         assert_eq!(styled_line.spans.len(), 1);
     }
 
+    #[test]
+    fn test_build_error_line_uses_rusty_red_color() {
+        let line = "invalid expression";
+        let error = EvalError::new("syntax error");
+
+        let styled_line = build_error_line(line, &error);
+
+        // Error style should use rusty-red color (RGB 139, 69, 19)
+        assert_eq!(styled_line.spans.len(), 1);
+        let span_style = styled_line.spans[0].style;
+        assert_eq!(
+            span_style.fg,
+            Some(ACCENT_COLOR),
+            "Error text should use rusty-red accent color"
+        );
+    }
+
     // ============================================================
     // build_result_lines tests
     // ============================================================
@@ -1389,16 +1447,11 @@ mod tests {
     }
 
     #[test]
-    fn test_current_line_highlight_style_is_subtle() {
-        // Verify the highlight color is a subtle dark gray
+    fn test_current_line_highlight_style_uses_dark_gray() {
+        // Verify the highlight color matches the command bar (DarkGray)
         let style = current_line_highlight_style();
         assert!(style.bg.is_some());
-        // The background should be set to a gray color
-        if let Some(Color::Rgb(r, g, b)) = style.bg {
-            // Should be a subtle gray (values around 40-60 for dark theme)
-            assert!(r == g && g == b, "Highlight should be gray (r=g=b)");
-            assert!(r < 100, "Highlight should be subtle/dark");
-        }
+        assert_eq!(style.bg, Some(Color::DarkGray));
     }
 
     // ============================================================
@@ -1407,9 +1460,10 @@ mod tests {
 
     #[test]
     fn test_calculate_gutter_width_single_digit_lines() {
-        // 1-9 lines need 1 char plus 1 space = 2
-        assert_eq!(calculate_gutter_width(1), 2);
-        assert_eq!(calculate_gutter_width(9), 2);
+        // 1-9 lines need minimum width of 3 for title alignment
+        // (2 columns for line number aligning with emoji + 1 space)
+        assert_eq!(calculate_gutter_width(1), 3);
+        assert_eq!(calculate_gutter_width(9), 3);
     }
 
     #[test]
@@ -1435,8 +1489,33 @@ mod tests {
 
     #[test]
     fn test_calculate_gutter_width_minimum() {
-        // Even 0 lines should have minimum width for display
-        assert_eq!(calculate_gutter_width(0), 2);
+        // Even 0 lines should have minimum width of 3 for title alignment
+        // (2 columns for emoji width + 1 space)
+        assert_eq!(calculate_gutter_width(0), 3);
+    }
+
+    #[test]
+    fn test_gutter_width_aligns_with_title() {
+        // The title is "🦀 crabculator" where the emoji takes 2 columns
+        // and there's a space before "crabculator".
+        // Line numbers should align under the emoji (2 columns),
+        // with a space separator, so minimum gutter width is 3.
+        // This ensures content starts at the same column as "crabculator".
+        assert_eq!(
+            calculate_gutter_width(1),
+            3,
+            "Single line buffer should have gutter width 3 for title alignment"
+        );
+        assert_eq!(
+            calculate_gutter_width(5),
+            3,
+            "Small buffer should have gutter width 3 for title alignment"
+        );
+        assert_eq!(
+            calculate_gutter_width(9),
+            3,
+            "9 lines should have gutter width 3 for title alignment"
+        );
     }
 
     #[test]
@@ -1472,11 +1551,12 @@ mod tests {
             style.bg.is_none(),
             "Gutter should not have a distinct background color"
         );
-        // Gutter should have a dimmed foreground color (DarkGray)
+        // Gutter should have a dimmed foreground color (Gray - lighter than DarkGray
+        // to remain visible when current line highlight is applied)
         assert_eq!(
             style.fg,
-            Some(Color::DarkGray),
-            "Gutter should use DarkGray foreground"
+            Some(Color::Gray),
+            "Gutter should use Gray foreground for visibility"
         );
     }
 
@@ -1525,6 +1605,36 @@ mod tests {
         assert!(output[1].style.bg.is_some());
     }
 
+    #[test]
+    fn test_line_number_visible_on_highlighted_line() {
+        // Line numbers SHALL be visible even when the current line is highlighted.
+        // This means the line number foreground color must contrast with the
+        // highlight background color.
+        let lines = vec!["test line".to_string()];
+        let results = vec![LineResult::Empty];
+
+        let (output, _) = build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 0, 0, 80);
+
+        // The line is highlighted (current_row = 0)
+        let line = &output[0];
+        let highlight_bg = line.style.bg;
+        assert!(
+            highlight_bg.is_some(),
+            "Current line should have background highlight"
+        );
+
+        // The first span is the line number - verify its foreground differs from background
+        let line_num_span = &line.spans[0];
+        let gutter_fg = line_num_span.style.fg;
+
+        // The gutter foreground must NOT equal the highlight background
+        assert_ne!(
+            gutter_fg, highlight_bg,
+            "Line number foreground ({:?}) must differ from highlight background ({:?}) for visibility",
+            gutter_fg, highlight_bg
+        );
+    }
+
     // ============================================================
     // Panel Border Styling tests
     // ============================================================
@@ -1541,25 +1651,152 @@ mod tests {
     }
 
     #[test]
-    fn test_result_panel_block_returns_valid_block() {
-        // Verify result_panel_block returns a Block configured with rounded borders
-        // and dark grey styling. Since Block's internal state is not accessible,
-        // we verify it compiles and can be rendered (indirectly tested by render functions).
-        let block = result_panel_block();
-        // Type assertion: this compiles only if result_panel_block returns Block
-        let _: Block = block;
+    fn test_memory_panel_block_returns_valid_block() {
+        // Verify memory_panel_block returns a Block.
+        // Since Block's internal state is not accessible,
+        // we verify it compiles and can be rendered.
+        let block_left = memory_panel_block(true);
+        let block_right = memory_panel_block(false);
+        // Type assertions: these compile only if memory_panel_block returns Block
+        let _: Block = block_left;
+        let _: Block = block_right;
     }
 
     #[test]
-    fn test_both_panel_blocks_have_same_border_configuration() {
-        // Both panels should have consistent border styling.
-        // This test ensures both functions exist and return valid Blocks.
-        // The actual border configuration (rounded, dark grey) is specified in code
-        // and verified visually or through integration tests.
+    fn test_both_panel_blocks_exist() {
+        // Both panels should exist and return valid Blocks.
         let input_block = input_panel_block();
-        let result_block = result_panel_block();
+        let memory_block = memory_panel_block(true);
         // Both blocks should exist without error
-        let _: (Block, Block) = (input_block, result_block);
+        let _: (Block, Block) = (input_block, memory_block);
+    }
+
+    #[test]
+    fn test_input_panel_block_has_top_border_for_title_underline() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(20, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let block = input_panel_block();
+                frame.render_widget(block, area);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        // Debug: print all rows
+        let mut all_rows = String::new();
+        for y in 0..5 {
+            let row: String = (0..20)
+                .map(|x| buffer[(x, y)].symbol().chars().next().unwrap_or(' '))
+                .collect();
+            all_rows.push_str(&format!("Row {}: '{}'\n", y, row));
+        }
+
+        // The first row (index 0) should contain the title and top border
+        // Check for horizontal line characters (box drawing)
+        let first_row: String = (0..20)
+            .map(|x| buffer[(x, 0)].symbol().chars().next().unwrap_or(' '))
+            .collect();
+        assert!(
+            first_row.contains('─') || first_row.contains('━'),
+            "Calculator panel should have top border line. Buffer contents:\n{}",
+            all_rows
+        );
+    }
+
+    #[test]
+    fn test_memory_panel_block_has_top_border_for_title_underline() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(20, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let block = memory_panel_block(true);
+                frame.render_widget(block, area);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        // The first row (index 0) should contain the title and top border
+        let first_row: String = (0..20)
+            .map(|x| buffer[(x, 0)].symbol().chars().next().unwrap_or(' '))
+            .collect();
+        assert!(
+            first_row.contains('─') || first_row.contains('━'),
+            "Memory panel should have top border (underline below title). Got: '{}'",
+            first_row
+        );
+    }
+
+    #[test]
+    fn test_memory_panel_title_right_aligned_when_pane_left() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(20, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let block = memory_panel_block(true); // pane on left
+                frame.render_widget(block, area);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        // The title "Memory" should be right-aligned when pane is on left
+        let first_row: String = (0..20)
+            .map(|x| buffer[(x, 0)].symbol().chars().next().unwrap_or(' '))
+            .collect();
+        // Check that "Memory" appears near the right side, not at the start
+        let memory_pos = first_row.find("Memory");
+        assert!(
+            memory_pos.is_some() && memory_pos.unwrap() > 5,
+            "Memory title should be right-aligned when pane is left. Got: '{}'",
+            first_row
+        );
+    }
+
+    #[test]
+    fn test_memory_panel_title_left_aligned_when_pane_right() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(20, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let block = memory_panel_block(false); // pane on right
+                frame.render_widget(block, area);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        // The title "Memory" should be left-aligned when pane is on right
+        let first_row: String = (0..20)
+            .map(|x| buffer[(x, 0)].symbol().chars().next().unwrap_or(' '))
+            .collect();
+        // When pane is on right, left border exists, so "Memory" should start at position 1
+        // Check that "Memory" appears near the left side
+        let memory_pos = first_row.find("Memory");
+        assert!(
+            memory_pos.is_some() && memory_pos.unwrap() <= 3,
+            "Memory title should be left-aligned when pane is right. Got: '{}', position: {:?}",
+            first_row,
+            memory_pos
+        );
     }
 
     // ============================================================
@@ -1593,6 +1830,28 @@ mod tests {
         assert!(
             text_str.contains("↑↓") && text_str.contains("history"),
             "Command bar should contain '↑↓: history'"
+        );
+    }
+
+    #[test]
+    fn test_command_bar_text_includes_move_memory() {
+        let text = build_command_bar_text();
+        let text_str = text.to_string();
+        assert!(
+            text_str.contains("CTRL+←/→") && text_str.contains("move memory"),
+            "Command bar should contain 'CTRL+←/→: move memory'"
+        );
+    }
+
+    #[test]
+    fn test_command_bar_text_uses_rusty_red_for_shortcuts() {
+        let text = build_command_bar_text();
+        // Keyboard shortcuts should use rusty-red color (RGB 139, 69, 19)
+        let first_span = &text.spans[0];
+        assert_eq!(
+            first_span.style.fg,
+            Some(ACCENT_COLOR),
+            "Keyboard shortcuts should use rusty-red accent color"
         );
     }
 
@@ -1661,8 +1920,8 @@ mod tests {
     fn test_calculator_panel_title_with_emoji_support() {
         let title = calculator_panel_title_with_emoji_support(true);
         assert_eq!(
-            title, "🦀CrabCalculator",
-            "Title should include crab emoji when terminal supports it"
+            title, "🦀 crabculator",
+            "Title should include crab emoji with space when terminal supports it"
         );
     }
 
@@ -1670,22 +1929,22 @@ mod tests {
     fn test_calculator_panel_title_without_emoji_support() {
         let title = calculator_panel_title_with_emoji_support(false);
         assert_eq!(
-            title, "CrabCalculator",
-            "Title should not include emoji when terminal doesn't support it"
+            title, "crabculator",
+            "Title should be lowercase without emoji when terminal doesn't support it"
         );
     }
 
     #[test]
-    fn test_calculator_panel_title_no_space_between_emoji_and_text() {
+    fn test_calculator_panel_title_has_space_after_emoji() {
         let title = calculator_panel_title_with_emoji_support(true);
-        // Verify emoji is directly adjacent to text (no space)
+        // Verify emoji is followed by a space
         assert!(
-            title.starts_with("🦀C"),
-            "Emoji should be directly adjacent to 'C' without space"
+            title.starts_with("🦀 c"),
+            "Emoji should be followed by a space and lowercase 'c'"
         );
         assert!(
-            !title.contains("🦀 "),
-            "There should be no space after the emoji"
+            title.contains("🦀 "),
+            "There should be a space after the emoji"
         );
     }
 
@@ -1701,9 +1960,16 @@ mod tests {
         ];
         let current_row = 0;
         let panel_width = 20;
+        let memory_pane_left = false;
 
-        let output =
-            build_visible_result_lines_with_highlight(&results, 0, 10, current_row, panel_width);
+        let output = build_visible_result_lines_with_highlight(
+            &results,
+            0,
+            10,
+            current_row,
+            panel_width,
+            memory_pane_left,
+        );
 
         // The first line (current row) should have spans totaling panel_width
         // "42" (2 chars) + padding (18 chars) = 20 chars
@@ -1720,9 +1986,16 @@ mod tests {
         let results = vec![LineResult::Value(42.0), LineResult::Value(100.0)];
         let current_row = 0;
         let panel_width = 20;
+        let memory_pane_left = false;
 
-        let output =
-            build_visible_result_lines_with_highlight(&results, 0, 10, current_row, panel_width);
+        let output = build_visible_result_lines_with_highlight(
+            &results,
+            0,
+            10,
+            current_row,
+            panel_width,
+            memory_pane_left,
+        );
 
         // The second line (not current row) should NOT be padded
         let second_line = &output[1];
@@ -1743,9 +2016,16 @@ mod tests {
         let results = vec![LineResult::Empty];
         let current_row = 0;
         let panel_width = 15;
+        let memory_pane_left = false;
 
-        let output =
-            build_visible_result_lines_with_highlight(&results, 0, 10, current_row, panel_width);
+        let output = build_visible_result_lines_with_highlight(
+            &results,
+            0,
+            10,
+            current_row,
+            panel_width,
+            memory_pane_left,
+        );
 
         // Empty line when current should be padded to full width
         let first_line = &output[0];
@@ -1800,9 +2080,16 @@ mod tests {
         let results = vec![LineResult::Value(1.0)];
         let current_row = 0;
         let panel_width = 100;
+        let memory_pane_left = false;
 
-        let output =
-            build_visible_result_lines_with_highlight(&results, 0, 10, current_row, panel_width);
+        let output = build_visible_result_lines_with_highlight(
+            &results,
+            0,
+            10,
+            current_row,
+            panel_width,
+            memory_pane_left,
+        );
 
         let first_line = &output[0];
         let total_content_len: usize = first_line.spans.iter().map(|span| span.content.len()).sum();
@@ -1818,15 +2105,52 @@ mod tests {
         let results = vec![LineResult::Value(12345.0)];
         let current_row = 0;
         let panel_width = 5; // "12345" is exactly 5 chars
+        let memory_pane_left = false;
 
-        let output =
-            build_visible_result_lines_with_highlight(&results, 0, 10, current_row, panel_width);
+        let output = build_visible_result_lines_with_highlight(
+            &results,
+            0,
+            10,
+            current_row,
+            panel_width,
+            memory_pane_left,
+        );
 
         let first_line = &output[0];
         let total_content_len: usize = first_line.spans.iter().map(|span| span.content.len()).sum();
         assert_eq!(
             total_content_len, panel_width,
             "When content equals panel width, total should still equal panel width"
+        );
+    }
+
+    #[test]
+    fn test_build_visible_result_lines_right_aligned_when_pane_left() {
+        let results = vec![LineResult::Value(42.0)]; // "42" is 2 chars
+        let current_row = 0;
+        let panel_width = 10;
+        let memory_pane_left = true;
+
+        let output = build_visible_result_lines_with_highlight(
+            &results,
+            0,
+            10,
+            current_row,
+            panel_width,
+            memory_pane_left,
+        );
+
+        // Content should be right-aligned: 8 spaces + "42"
+        let first_line = &output[0];
+        assert!(
+            first_line.spans.len() >= 2,
+            "Should have padding and content spans"
+        );
+        // First span should be padding (8 spaces)
+        assert_eq!(
+            first_line.spans[0].content.as_ref(),
+            "        ",
+            "First span should be 8 spaces of padding"
         );
     }
 
@@ -1942,13 +2266,13 @@ mod tests {
 
         // First line should be "=== General Usage ===" which is styled as header
         let first_line = &lines[0];
-        // Headers should have yellow bold style
+        // Headers should have white bold style
         if !first_line.spans.is_empty() {
             let style = first_line.spans[0].style;
             assert_eq!(
                 style.fg,
-                Some(Color::Yellow),
-                "Header should be styled yellow"
+                Some(Color::White),
+                "Header should be styled white"
             );
         }
     }
