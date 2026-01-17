@@ -4,23 +4,13 @@ use crate::storage;
 
 /// Application state for Crabculator.
 pub struct App {
-    /// Whether the application is still running.
     pub running: bool,
-    /// The text buffer for expression input.
     pub buffer: Buffer,
-    /// The evaluation context for variables.
     pub context: EvalContext,
-    /// Scroll offset (first visible line index, 0-based).
-    /// Used for vertical scrolling when content exceeds visible height.
     pub scroll_offset: usize,
-    /// Horizontal scroll offset (first visible column index, 0-based).
-    /// Used for horizontal scrolling when content exceeds visible width.
     pub horizontal_scroll_offset: usize,
-    /// Whether the help overlay is currently visible.
     pub help_visible: bool,
-    /// Scroll offset for the help overlay content (0-based).
     pub help_scroll_offset: usize,
-    /// Whether the memory pane is positioned on the left side.
     pub memory_pane_left: bool,
 }
 
@@ -48,7 +38,7 @@ impl App {
         }
     }
 
-    /// Signals the application to quit by setting running to false.
+    /// Quit the application.
     pub const fn quit(&mut self) {
         self.running = false;
     }

@@ -153,18 +153,6 @@ pub fn build_result_lines(results: &[LineResult]) -> Vec<Line<'_>> {
 }
 
 /// Builds visible input lines with scrolling and current line highlighting.
-///
-/// Combines scrolling support with current line highlighting for the input panel.
-///
-/// # Arguments
-/// * `lines` - The buffer lines to render
-/// * `results` - The evaluation results corresponding to each line
-/// * `scroll_offset` - The first visible line index (0-based)
-/// * `visible_height` - The number of visible lines in the viewport
-/// * `current_row` - The row index where the cursor is positioned (0-indexed)
-///
-/// # Returns
-/// A vector of styled `Line` objects for the visible portion only.
 #[must_use]
 pub fn build_visible_input_lines_with_highlight<'a>(
     lines: &'a [String],
@@ -211,21 +199,6 @@ pub fn build_visible_input_lines_with_highlight<'a>(
 }
 
 /// Builds visible result lines with scrolling and current line highlighting.
-///
-/// Combines scrolling support with current line highlighting for the results panel.
-/// Lines are padded to fill the panel width for full-width highlighting.
-/// Content is right-aligned when memory pane is on the left side.
-///
-/// # Arguments
-/// * `results` - The evaluation results to display
-/// * `scroll_offset` - The first visible line index (0-based)
-/// * `visible_height` - The number of visible lines in the viewport
-/// * `current_row` - The row index where the cursor is positioned (0-indexed)
-/// * `panel_width` - The width of the panel (excluding borders) for full-width highlighting
-/// * `memory_pane_left` - Whether the memory pane is on the left side (for right-alignment)
-///
-/// # Returns
-/// A vector of styled `Line` objects for the visible portion only.
 #[must_use]
 pub fn build_visible_result_lines_with_highlight(
     results: &[LineResult],
@@ -963,8 +936,6 @@ pub fn help_content_lines() -> Vec<&'static str> {
     lines
 }
 
-/// The total number of lines in the help content.
-/// This is the sum of `HELP_GENERAL_USAGE` (21 lines) + `HELP_FUNCTION_REFERENCE` (37 lines).
 pub const HELP_CONTENT_HEIGHT: usize = 58;
 
 /// Calculates the centered area for an overlay of the given dimensions.

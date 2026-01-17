@@ -2,12 +2,10 @@
 //!
 //! Handles cursor position and navigation within the text buffer.
 
-/// Represents a cursor position in a text buffer.
+/// Represents a cursor position in a text buffer (0-indexed row and column).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Cursor {
-    /// The row (line) position, 0-indexed.
     row: usize,
-    /// The column position within the line, 0-indexed.
     col: usize,
 }
 

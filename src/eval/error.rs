@@ -5,12 +5,10 @@
 
 use std::fmt;
 
-/// Span indicating the position of an error in the source expression.
+/// Span indicating the position of an error (0-indexed, end is exclusive).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ErrorSpan {
-    /// Starting column (0-indexed).
     pub start: usize,
-    /// Ending column (exclusive, 0-indexed).
     pub end: usize,
 }
 
