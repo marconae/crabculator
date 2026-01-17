@@ -113,7 +113,8 @@ The expression editor operates within a TUI terminal environment as the primary 
 
 * *GIVEN* the editor is being rendered
 * *WHEN* viewing line numbers
-* *THEN* line numbers SHALL display in dimmed foreground color
+* *THEN* line numbers SHALL display in dimmed foreground color (Gray)
+* *AND* line number foreground color SHALL contrast with the current line highlight background
 * *AND* line number background SHALL match the content area background
 
 ### Scenario: Variables display in cyan
@@ -160,3 +161,17 @@ The expression editor operates within a TUI terminal environment as the primary 
 * *WHEN* the user types characters that extend beyond the viewport width
 * *THEN* the viewport SHALL scroll to keep the cursor visible
 * *AND* the most recent characters SHALL remain in view
+
+### Scenario: Line numbers align with title icon
+
+* *GIVEN* the calculator pane is being rendered
+* *WHEN* viewing the line number gutter
+* *THEN* the line numbers SHALL be positioned to align with the crab icon in the title
+* *AND* the line number column SHALL start at the same horizontal position as the icon
+
+### Scenario: Math expressions align with title text
+
+* *GIVEN* the calculator pane is being rendered
+* *WHEN* viewing math expressions
+* *THEN* the first character of each expression SHALL align with the "c" in "crabculator"
+* *AND* this alignment SHALL be consistent across all lines

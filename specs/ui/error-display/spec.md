@@ -13,7 +13,8 @@ The error display system integrates with the expression evaluator to receive err
 * *GIVEN* the user has entered an expression
 * *WHEN* an expression contains a syntax error
 * *AND* the error position can be determined
-* *THEN* the invalid token or position SHALL be underlined in red
+* *THEN* the specific invalid token or expression portion SHALL be highlighted
+* *AND* the highlight color SHALL be rusty-red (RGB 139, 69, 19)
 
 ### Scenario: Highlight entire expression on unparseable error
 
@@ -27,7 +28,7 @@ The error display system integrates with the expression evaluator to receive err
 * *GIVEN* an expression has been evaluated
 * *WHEN* an expression evaluation produces an error
 * *THEN* the error message SHALL be displayed on the line below the expression
-* *AND* the error message SHALL be styled in red text
+* *AND* the error message SHALL be styled in rusty-red color (RGB 139, 69, 19)
 * *AND* the error message SHALL be indented to align with the expression
 
 ### Scenario: Error message content

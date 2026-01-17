@@ -24,35 +24,65 @@ The TUI shell operates within a terminal environment using ratatui and crossterm
 * *AND* the main screen SHALL be restored
 * *AND* the cursor SHALL be visible
 
-### Scenario: Layout renders with rounded borders
-
-* *GIVEN* the terminal is initialized
-* *WHEN* the application starts
-* *THEN* the left panel SHALL occupy approximately 80% of terminal width
-* *AND* the right panel SHALL occupy approximately 20% of terminal width
-* *AND* both panels SHALL have rounded corner borders
-* *AND* borders SHALL be colored dark grey
-
 ### Scenario: Layout adapts to terminal resize
 
 * *GIVEN* the application is displaying its layout
 * *WHEN* the terminal is resized
 * *THEN* panels SHALL maintain their proportional widths
 * *AND* content SHALL reflow to fit new dimensions
-* *AND* rounded borders and dark grey color SHALL be preserved
 
 ### Scenario: Panels have branded titles
 
 * *GIVEN* the application is displaying its layout
 * *WHEN* viewing the application
-* *THEN* the left panel SHALL display title "CrabCalculator"
-* *AND* the right panel SHALL display title "Memory"
+* *THEN* the calculator pane SHALL display title "🦀 crabculator"
+* *AND* the memory pane SHALL display title "Memory"
 
 ### Scenario: Emoji fallback for unsupported terminals
 
 * *GIVEN* the terminal does not support emoji rendering
 * *WHEN* viewing the application
-* *THEN* the left panel SHALL display title "CrabCalculator" without emoji
+* *THEN* the calculator pane SHALL display title "crabculator" without emoji
+
+### Scenario: Memory pane styling
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* viewing the memory pane
+* *THEN* the memory pane SHALL have a dark grey background
+* *AND* the memory pane SHALL NOT have rounded corner borders
+* *AND* the memory pane SHALL have a rusty-red border on the side adjacent to the calculator pane only
+
+### Scenario: Memory pane border on right when pane is left
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* the memory pane is on the left side
+* *THEN* the memory pane border SHALL be on the right edge only
+
+### Scenario: Memory pane border on left when pane is right
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* the memory pane is on the right side
+* *THEN* the memory pane border SHALL be on the left edge only
+
+### Scenario: Calculator pane styling
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* viewing the calculator pane
+* *THEN* the calculator pane SHALL NOT have any side borders
+* *AND* the calculator pane SHALL have a rusty-red underline below the title
+
+### Scenario: Current line highlight uses rusty-red color
+
+* *GIVEN* the editor contains multiple lines
+* *WHEN* cursor is on a line
+* *THEN* that line's background highlight SHALL use a rusty-red color
+
+### Scenario: Command bar keyboard shortcuts use accent color
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* viewing the command bar
+* *THEN* keyboard shortcut text (e.g., "CTRL+Q", "CTRL+R") SHALL be displayed in rusty-red
+* *AND* shortcut descriptions SHALL be displayed in default color
 
 ### Scenario: Exit via Ctrl+C
 
@@ -160,3 +190,79 @@ The TUI shell operates within a terminal environment using ratatui and crossterm
 * *WHEN* help overlay is visible
 * *THEN* keyboard input SHALL be captured by the overlay
 * *AND* editor SHALL NOT receive input until overlay is closed
+
+### Scenario: Memory pane defaults to left position
+
+* *GIVEN* the application starts
+* *WHEN* the UI renders
+* *THEN* the memory pane SHALL be positioned on the left side
+* *AND* the calculator pane SHALL be positioned on the right side
+* *AND* the memory pane content SHALL be right-aligned
+
+### Scenario: Move memory pane right via CTRL+Right
+
+* *GIVEN* the memory pane is on the left
+* *WHEN* user presses CTRL+Right arrow
+* *THEN* the memory pane SHALL move to the right side
+* *AND* the calculator pane SHALL move to the left side
+* *AND* the memory pane content SHALL be left-aligned
+
+### Scenario: Move memory pane left via CTRL+Left
+
+* *GIVEN* the memory pane is on the right
+* *WHEN* user presses CTRL+Left arrow
+* *THEN* the memory pane SHALL move to the left side
+* *AND* the calculator pane SHALL move to the right side
+* *AND* the memory pane content SHALL be right-aligned
+
+### Scenario: Memory pane position toggle is idempotent
+
+* *GIVEN* the memory pane is already on the left
+* *WHEN* user presses CTRL+Left arrow
+* *THEN* the memory pane SHALL remain on the left side
+
+### Scenario: Command bar displays memory pane shortcut
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* viewing the application
+* *THEN* the command bar SHALL display "CTRL+←/→: move memory"
+
+### Scenario: Panel titles have underline border
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* viewing any panel
+* *THEN* the panel SHALL display a full-width rusty-red underline below the title row
+* *AND* the underline SHALL span the entire panel width
+
+### Scenario: Memory pane title right-aligned when pane is left
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* the memory pane is on the left side
+* *THEN* the memory pane title "Memory" SHALL be right-aligned
+
+### Scenario: Memory pane title left-aligned when pane is right
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* the memory pane is on the right side
+* *THEN* the memory pane title "Memory" SHALL be left-aligned
+
+### Scenario: Application uses unified accent color
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* viewing any accent-colored element
+* *THEN* the element SHALL use rusty-red color (RGB 139, 69, 19)
+* *AND* this SHALL include title underlines, panel dividers, error messages, and keyboard shortcuts
+
+### Scenario: Help overlay uses accent color border
+
+* *GIVEN* the help overlay is displayed
+* *WHEN* viewing the overlay
+* *THEN* the overlay border SHALL use rusty-red color
+* *AND* the overlay border SHALL NOT use cyan
+
+### Scenario: Help overlay headers use white color
+
+* *GIVEN* the help overlay is displayed
+* *WHEN* viewing section headers
+* *THEN* headers (lines starting with "===") SHALL be displayed in white
+* *AND* headers SHALL NOT be displayed in yellow
