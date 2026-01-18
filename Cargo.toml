@@ -3,6 +3,7 @@ name = "crabculator"
 authors = ["marconae"]
 version = "0.3.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 ratatui = "0.29"

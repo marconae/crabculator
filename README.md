@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/crabculator-logo.svg" alt="CrabCulator Logo" width="200">
+<img src="assets/crabculator-logo.svg" alt="crabculator Logo" width="200">
 
 # CrabCulator
 
