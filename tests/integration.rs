@@ -251,6 +251,7 @@ use tempfile::tempdir;
 ///
 /// This test simulates the app lifecycle:
 /// - Start app -> edit buffer -> quit -> restart -> buffer restored
+///
 /// Note: Variables are no longer persisted; they're recomputed from buffer evaluation.
 #[test]
 fn test_state_persistence_roundtrip() {

@@ -1601,8 +1601,7 @@ mod tests {
         // The gutter foreground must NOT equal the highlight background
         assert_ne!(
             gutter_fg, highlight_bg,
-            "Line number foreground ({:?}) must differ from highlight background ({:?}) for visibility",
-            gutter_fg, highlight_bg
+            "Line number foreground ({gutter_fg:?}) must differ from highlight background ({highlight_bg:?}) for visibility"
         );
     }
 
@@ -1646,6 +1645,7 @@ mod tests {
     fn test_input_panel_block_has_top_border_for_title_underline() {
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
+        use std::fmt::Write;
 
         let backend = TestBackend::new(20, 5);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -1665,7 +1665,7 @@ mod tests {
             let row: String = (0..20)
                 .map(|x| buffer[(x, y)].symbol().chars().next().unwrap_or(' '))
                 .collect();
-            all_rows.push_str(&format!("Row {}: '{}'\n", y, row));
+            writeln!(all_rows, "Row {y}: '{row}'").unwrap();
         }
 
         // The first row (index 0) should contain the title and top border
@@ -1675,8 +1675,7 @@ mod tests {
             .collect();
         assert!(
             first_row.contains('─') || first_row.contains('━'),
-            "Calculator panel should have top border line. Buffer contents:\n{}",
-            all_rows
+            "Calculator panel should have top border line. Buffer contents:\n{all_rows}"
         );
     }
 
@@ -1703,8 +1702,7 @@ mod tests {
             .collect();
         assert!(
             first_row.contains('─') || first_row.contains('━'),
-            "Memory panel should have top border (underline below title). Got: '{}'",
-            first_row
+            "Memory panel should have top border (underline below title). Got: '{first_row}'"
         );
     }
 
@@ -1733,8 +1731,7 @@ mod tests {
         let memory_pos = first_row.find("Memory");
         assert!(
             memory_pos.is_some() && memory_pos.unwrap() > 5,
-            "Memory title should be right-aligned when pane is left. Got: '{}'",
-            first_row
+            "Memory title should be right-aligned when pane is left. Got: '{first_row}'"
         );
     }
 
@@ -1764,9 +1761,7 @@ mod tests {
         let memory_pos = first_row.find("Memory");
         assert!(
             memory_pos.is_some() && memory_pos.unwrap() <= 3,
-            "Memory title should be left-aligned when pane is right. Got: '{}', position: {:?}",
-            first_row,
-            memory_pos
+            "Memory title should be left-aligned when pane is right. Got: '{first_row}', position: {memory_pos:?}"
         );
     }
 
