@@ -136,4 +136,4 @@ Free and open-source under [MIT](LICENSE).
 
 ---
 
-Build with ❤️ by [Marco Nätlitz – blogging on deliberate.codes](https://deliberate.codes). Made with 🦀 in Rust
+Build with 🦀 Rust and made with ❤️ by [marconae – blogging on deliberate.codes](https://deliberate.codes). 
