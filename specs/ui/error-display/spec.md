@@ -13,8 +13,8 @@ The error display system integrates with the expression evaluator to receive err
 * *GIVEN* the user has entered an expression
 * *WHEN* an expression contains a syntax error
 * *AND* the error position can be determined
-* *THEN* the specific invalid token or expression portion SHALL be highlighted
-* *AND* the highlight color SHALL be rusty-red (RGB 139, 69, 19)
+* *THEN* the specific invalid token or expression portion SHALL be underlined
+* *AND* the underline SHALL use the terminal's semantic red color (Color::Red)
 
 ### Scenario: Highlight entire expression on unparseable error
 
@@ -28,8 +28,10 @@ The error display system integrates with the expression evaluator to receive err
 * *GIVEN* an expression has been evaluated
 * *WHEN* an expression evaluation produces an error
 * *THEN* the error message SHALL be displayed on the line below the expression
-* *AND* the error message SHALL be styled in rusty-red color (RGB 139, 69, 19)
-* *AND* the error message SHALL be indented to align with the expression
+* *AND* the error message SHALL be styled with dim and italic modifiers
+* *AND* the error message SHALL NOT use a fixed color (adapts to terminal theme)
+* *AND* the error message SHALL include a caret (^) pointing to the error location
+* *AND* the error message SHALL be indented to align with the error position
 
 ### Scenario: Error message content
 
@@ -63,3 +65,10 @@ The error display system integrates with the expression evaluator to receive err
 * *GIVEN* a line contains an invalid expression
 * *WHEN* a line has an evaluation error
 * *THEN* no result value SHALL be displayed in the right panel for that row
+
+### Scenario: Memory pane alignment with error messages
+
+* *GIVEN* the editor contains an expression with an error
+* *WHEN* the error message is displayed below the expression
+* *THEN* the memory pane SHALL include an empty line corresponding to the error message line
+* *AND* subsequent results SHALL remain visually aligned with their input expressions

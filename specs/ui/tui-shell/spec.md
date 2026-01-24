@@ -44,13 +44,13 @@ The TUI shell operates within a terminal environment using ratatui and crossterm
 * *WHEN* viewing the application
 * *THEN* the calculator pane SHALL display title "crabculator" without emoji
 
-### Scenario: Memory pane styling
+### Scenario: Memory pane uses transparent background
 
 * *GIVEN* the application is displaying its layout
 * *WHEN* viewing the memory pane
-* *THEN* the memory pane SHALL have a dark grey background
-* *AND* the memory pane SHALL NOT have rounded corner borders
-* *AND* the memory pane SHALL have a rusty-red border on the side adjacent to the calculator pane only
+* *THEN* the memory pane SHALL use the terminal's default background
+* *AND* the memory pane SHALL NOT have a colored border
+* *AND* a single thin vertical line (│) SHALL separate it from the calculator pane
 
 ### Scenario: Memory pane border on right when pane is left
 
@@ -71,18 +71,19 @@ The TUI shell operates within a terminal environment using ratatui and crossterm
 * *THEN* the calculator pane SHALL NOT have any side borders
 * *AND* the calculator pane SHALL have a rusty-red underline below the title
 
-### Scenario: Current line highlight uses rusty-red color
+### Scenario: Current line uses reverse video highlight
 
 * *GIVEN* the editor contains multiple lines
 * *WHEN* cursor is on a line
-* *THEN* that line's background highlight SHALL use a rusty-red color
+* *THEN* that line SHALL be displayed with reverse video styling (foreground/background swapped)
+* *AND* the corresponding result line in the memory pane SHALL also use reverse video
 
-### Scenario: Command bar keyboard shortcuts use accent color
+### Scenario: Command bar keyboard shortcuts use bold styling
 
 * *GIVEN* the application is displaying its layout
 * *WHEN* viewing the command bar
-* *THEN* keyboard shortcut text (e.g., "CTRL+Q", "CTRL+R") SHALL be displayed in rusty-red
-* *AND* shortcut descriptions SHALL be displayed in default color
+* *THEN* keyboard shortcut text (e.g., "CTRL+Q", "CTRL+R") SHALL be displayed in bold with default text color
+* *AND* shortcut descriptions SHALL be displayed in default color (not bold)
 
 ### Scenario: Exit via Ctrl+C
 
@@ -227,12 +228,12 @@ The TUI shell operates within a terminal environment using ratatui and crossterm
 * *WHEN* viewing the application
 * *THEN* the command bar SHALL display "CTRL+←/→: move memory"
 
-### Scenario: Panel titles have underline border
+### Scenario: Panel titles use default styling with underline
 
 * *GIVEN* the application is displaying its layout
-* *WHEN* viewing any panel
-* *THEN* the panel SHALL display a full-width rusty-red underline below the title row
-* *AND* the underline SHALL span the entire panel width
+* *WHEN* viewing panel titles
+* *THEN* titles SHALL be displayed in default text color
+* *AND* a thin horizontal line (─) SHALL appear below each title row spanning the panel width
 
 ### Scenario: Memory pane title right-aligned when pane is left
 
@@ -246,23 +247,38 @@ The TUI shell operates within a terminal environment using ratatui and crossterm
 * *WHEN* the memory pane is on the right side
 * *THEN* the memory pane title "Memory" SHALL be left-aligned
 
-### Scenario: Application uses unified accent color
+### Scenario: Theme detection at startup
+
+* *GIVEN* the user launches Crabculator
+* *WHEN* the application starts
+* *THEN* the application SHALL attempt to detect if the terminal uses a light or dark theme
+* *AND* the application SHALL fall back to assuming dark theme if detection fails
+
+### Scenario: Command bar uses transparent background
 
 * *GIVEN* the application is displaying its layout
-* *WHEN* viewing any accent-colored element
-* *THEN* the element SHALL use rusty-red color (RGB 139, 69, 19)
-* *AND* this SHALL include title underlines, panel dividers, error messages, and keyboard shortcuts
+* *WHEN* viewing the command bar
+* *THEN* the command bar SHALL use the terminal's default background
+* *AND* a horizontal line (─) SHALL separate the command bar from the content above
 
-### Scenario: Help overlay uses accent color border
+### Scenario: Panel separator is a thin vertical line
+
+* *GIVEN* the application is displaying its layout
+* *WHEN* viewing the boundary between memory and calculator panes
+* *THEN* a single thin vertical line (│) SHALL separate the two panes
+* *AND* the separator SHALL use the terminal's default text color
+
+### Scenario: Help overlay uses transparent background
 
 * *GIVEN* the help overlay is displayed
 * *WHEN* viewing the overlay
-* *THEN* the overlay border SHALL use rusty-red color
-* *AND* the overlay border SHALL NOT use cyan
+* *THEN* the overlay SHALL use the terminal's default background
+* *AND* the overlay border SHALL use the terminal's default text color
+* *AND* the overlay border SHALL use rounded corners
 
-### Scenario: Help overlay headers use white color
+### Scenario: Help overlay headers use bold styling
 
 * *GIVEN* the help overlay is displayed
 * *WHEN* viewing section headers
-* *THEN* headers (lines starting with "===") SHALL be displayed in white
-* *AND* headers SHALL NOT be displayed in yellow
+* *THEN* headers (lines starting with "===") SHALL be displayed in bold
+* *AND* headers SHALL use the terminal's default text color (no fixed color)
