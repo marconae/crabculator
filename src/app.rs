@@ -1,6 +1,7 @@
 use crate::editor::Buffer;
 use crate::eval::EvalContext;
 use crate::storage;
+use crate::ui::AppTheme;
 
 /// Application state for Crabculator.
 pub struct App {
@@ -12,6 +13,7 @@ pub struct App {
     pub help_visible: bool,
     pub help_scroll_offset: usize,
     pub memory_pane_left: bool,
+    pub theme: AppTheme,
 }
 
 impl App {
@@ -19,6 +21,7 @@ impl App {
     ///
     /// Attempts to load persisted buffer lines from disk. Variables are not
     /// loaded; they are computed from evaluating the buffer lines.
+    /// Detects terminal theme at startup, falling back to Dark if detection fails.
     #[must_use]
     pub fn new() -> Self {
         let buffer = match storage::load() {
@@ -35,6 +38,7 @@ impl App {
             help_visible: false,
             help_scroll_offset: 0,
             memory_pane_left: true,
+            theme: AppTheme::detect(),
         }
     }
 
@@ -404,6 +408,13 @@ mod tests {
     fn test_app_new_initializes_memory_pane_left_to_true() {
         let app = App::new();
         assert!(app.memory_pane_left);
+    }
+
+    #[test]
+    fn test_app_new_detects_theme() {
+        let app = App::new();
+        // Theme detection returns a valid theme (Light or Dark)
+        assert!(matches!(app.theme, AppTheme::Light | AppTheme::Dark));
     }
 
     #[test]

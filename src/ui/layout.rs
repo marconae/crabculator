@@ -19,8 +19,8 @@ pub struct LayoutAreas {
 /// Creates the main layout with content area and command bar.
 ///
 /// The layout divides the terminal into:
-/// - Content area (all but last row): For input and results panels
-/// - Command bar (1 row): Displays available commands at the bottom
+/// - Content area (all but last 2 rows): For input and results panels
+/// - Command bar (2 rows): Horizontal separator line + command text
 ///
 /// # Arguments
 /// * `area` - The total available area to divide
@@ -33,7 +33,7 @@ pub fn create_main_layout(area: Rect) -> LayoutAreas {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(0),    // Content area takes remaining space
-            Constraint::Length(1), // Command bar is exactly 1 row
+            Constraint::Length(2), // Command bar: 1 row separator + 1 row text
         ]);
 
     let chunks = vertical_layout.split(area);
@@ -87,13 +87,13 @@ mod tests {
     }
 
     #[test]
-    fn main_layout_command_bar_is_one_row() {
+    fn main_layout_command_bar_is_two_rows() {
         let area = Rect::new(0, 0, 100, 50);
         let areas = create_main_layout(area);
 
         assert_eq!(
-            areas.command_bar.height, 1,
-            "Command bar should be exactly 1 row"
+            areas.command_bar.height, 2,
+            "Command bar should be exactly 2 rows (separator + text)"
         );
     }
 
@@ -103,8 +103,8 @@ mod tests {
         let areas = create_main_layout(area);
 
         assert_eq!(
-            areas.command_bar.y, 49,
-            "Command bar should be at the bottom (y=49 for height 50)"
+            areas.command_bar.y, 48,
+            "Command bar should be at the bottom (y=48 for height 50 with 2-row bar)"
         );
     }
 
@@ -114,8 +114,8 @@ mod tests {
         let areas = create_main_layout(area);
 
         assert_eq!(
-            areas.content_area.height, 49,
-            "Content area should be 49 rows (50 - 1 for command bar)"
+            areas.content_area.height, 48,
+            "Content area should be 48 rows (50 - 2 for command bar)"
         );
         assert_eq!(areas.content_area.y, 0, "Content area should start at y=0");
     }
@@ -202,12 +202,12 @@ mod tests {
         let small_areas = create_main_layout(small);
         let large_areas = create_main_layout(large);
 
-        // Command bar should always be 1 row
-        assert_eq!(small_areas.command_bar.height, 1);
-        assert_eq!(large_areas.command_bar.height, 1);
+        // Command bar should always be 2 rows (separator + text)
+        assert_eq!(small_areas.command_bar.height, 2);
+        assert_eq!(large_areas.command_bar.height, 2);
 
         // Content area should adapt
-        assert_eq!(small_areas.content_area.height, 23);
-        assert_eq!(large_areas.content_area.height, 99);
+        assert_eq!(small_areas.content_area.height, 22);
+        assert_eq!(large_areas.content_area.height, 98);
     }
 }

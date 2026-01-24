@@ -162,9 +162,8 @@ const fn is_operator(c: char) -> bool {
 pub fn token_style(token_type: &TokenType) -> Style {
     match token_type {
         TokenType::Variable | TokenType::Function => Style::default().fg(Color::Cyan),
-        TokenType::Number => Style::default().fg(Color::White),
+        TokenType::Number | TokenType::Parenthesis | TokenType::Whitespace => Style::default(),
         TokenType::Operator => Style::default().fg(Color::Gray),
-        TokenType::Parenthesis | TokenType::Whitespace => Style::default(),
     }
 }
 
@@ -494,9 +493,9 @@ mod tests {
     }
 
     #[test]
-    fn test_token_style_number_is_white() {
+    fn test_token_style_number_is_default() {
         let style = token_style(&TokenType::Number);
-        assert_eq!(style.fg, Some(Color::White));
+        assert_eq!(style.fg, None);
     }
 
     #[test]
@@ -528,16 +527,16 @@ mod tests {
         let spans = highlight_line(line);
 
         assert_eq!(spans.len(), 5);
-        // "5" - number (white)
-        assert_eq!(spans[0].style.fg, Some(Color::White));
+        // "5" - number (default)
+        assert_eq!(spans[0].style.fg, None);
         // " " - whitespace (default)
         assert_eq!(spans[1].style.fg, None);
         // "+" - operator (gray)
         assert_eq!(spans[2].style.fg, Some(Color::Gray));
         // " " - whitespace (default)
         assert_eq!(spans[3].style.fg, None);
-        // "3" - number (white)
-        assert_eq!(spans[4].style.fg, Some(Color::White));
+        // "3" - number (default)
+        assert_eq!(spans[4].style.fg, None);
     }
 
     #[test]
@@ -554,8 +553,8 @@ mod tests {
         assert_eq!(spans[2].style.fg, Some(Color::Gray));
         // " " - whitespace (default)
         assert_eq!(spans[3].style.fg, None);
-        // "10" - number (white)
-        assert_eq!(spans[4].style.fg, Some(Color::White));
+        // "10" - number (default)
+        assert_eq!(spans[4].style.fg, None);
     }
 
     #[test]
@@ -568,8 +567,8 @@ mod tests {
         assert_eq!(spans[0].style.fg, Some(Color::Cyan));
         // "(" - parenthesis (default)
         assert_eq!(spans[1].style.fg, None);
-        // "16" - number (white)
-        assert_eq!(spans[2].style.fg, Some(Color::White));
+        // "16" - number (default)
+        assert_eq!(spans[2].style.fg, None);
         // ")" - parenthesis (default)
         assert_eq!(spans[3].style.fg, None);
     }

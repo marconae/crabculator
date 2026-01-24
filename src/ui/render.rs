@@ -17,9 +17,6 @@ use crate::editor::Buffer;
 use crate::eval::{EvalError, LineResult, evaluate_all_lines};
 use crate::ui::highlight::{highlight_line, highlight_line_with_offset};
 
-/// Rusty-red accent color used for borders, errors, and keyboard shortcuts.
-const ACCENT_COLOR: Color = Color::Rgb(139, 69, 19);
-
 /// Formats a `LineResult` for display in the result panel.
 ///
 /// # Returns
@@ -81,7 +78,7 @@ pub fn build_input_lines<'a>(lines: &'a [String], results: &'a [LineResult]) -> 
         if let Some(LineResult::Error(err)) = result {
             let error_line = Line::from(Span::styled(
                 format!("  ^ {}", err.message()),
-                Style::default().fg(ACCENT_COLOR),
+                Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
             ));
             output.push(error_line);
         }
@@ -96,7 +93,7 @@ pub fn build_input_lines<'a>(lines: &'a [String], results: &'a [LineResult]) -> 
 /// Otherwise, the entire line is underlined.
 fn build_error_line<'a>(line_text: &'a str, error: &EvalError) -> Line<'a> {
     let error_style = Style::default()
-        .fg(ACCENT_COLOR)
+        .fg(Color::Red)
         .add_modifier(Modifier::UNDERLINED);
 
     error.span().map_or_else(
@@ -132,7 +129,9 @@ fn build_error_line<'a>(line_text: &'a str, error: &EvalError) -> Line<'a> {
 /// Builds styled text lines for the result panel.
 ///
 /// Results are aligned with their corresponding input lines.
-/// Empty lines and error lines show nothing.
+/// Empty lines and error lines show nothing. For error lines,
+/// an additional empty line is added to account for the error
+/// message line in the input panel.
 ///
 /// # Arguments
 /// * `results` - The evaluation results to display
@@ -141,15 +140,22 @@ fn build_error_line<'a>(line_text: &'a str, error: &EvalError) -> Line<'a> {
 /// A vector of styled `Line` objects ready for rendering.
 #[must_use]
 pub fn build_result_lines(results: &[LineResult]) -> Vec<Line<'_>> {
-    results
-        .iter()
-        .map(|result| {
-            format_result(result).map_or_else(
-                || Line::from(""),
-                |text| Line::from(Span::styled(text, Style::default().fg(Color::White))),
-            )
-        })
-        .collect()
+    let mut output = Vec::new();
+
+    for result in results {
+        let line = format_result(result).map_or_else(
+            || Line::from(""),
+            |text| Line::from(Span::styled(text, Style::default())),
+        );
+        output.push(line);
+
+        // Add empty line for error message to maintain alignment with input panel
+        if matches!(result, LineResult::Error(_)) {
+            output.push(Line::from(""));
+        }
+    }
+
+    output
 }
 
 /// Builds visible input lines with scrolling and current line highlighting.
@@ -189,7 +195,7 @@ pub fn build_visible_input_lines_with_highlight<'a>(
         if let Some(LineResult::Error(err)) = result {
             let error_line = Line::from(Span::styled(
                 format!("  ^ {}", err.message()),
-                Style::default().fg(ACCENT_COLOR),
+                Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
             ));
             output.push(error_line);
         }
@@ -199,6 +205,9 @@ pub fn build_visible_input_lines_with_highlight<'a>(
 }
 
 /// Builds visible result lines with scrolling and current line highlighting.
+///
+/// Results are aligned with their corresponding input lines, including
+/// empty lines for error messages to maintain visual alignment.
 #[must_use]
 pub fn build_visible_result_lines_with_highlight(
     results: &[LineResult],
@@ -209,63 +218,63 @@ pub fn build_visible_result_lines_with_highlight(
     memory_pane_left: bool,
 ) -> Vec<Line<'_>> {
     let highlight_style = current_line_highlight_style();
+    let mut output: Vec<Line<'_>> = Vec::new();
 
-    // Calculate the range of results to render
+    // Calculate the range of results to render (in expression space)
     let start = scroll_offset.min(results.len());
     let end = (scroll_offset + visible_height).min(results.len());
 
-    results[start..end]
-        .iter()
-        .enumerate()
-        .map(|(visible_idx, result)| {
-            let actual_idx = start + visible_idx;
-            let is_current_line = actual_idx == current_row;
+    for (i, result) in results.iter().enumerate().take(end).skip(start) {
+        let is_current_line = i == current_row;
 
-            let text = format_result(result).unwrap_or_default();
-            let content_width = text.len();
+        let text = format_result(result).unwrap_or_default();
+        let content_width = text.len();
 
-            // Build spans with padding for full-width highlight
-            // Right-align content when memory pane is on the left
-            let mut spans = if memory_pane_left && content_width < panel_width {
-                // Add leading padding for right alignment
-                let padding = " ".repeat(panel_width - content_width);
-                if text.is_empty() {
-                    vec![Span::raw(padding)]
-                } else {
-                    vec![
-                        Span::raw(padding),
-                        Span::styled(text, Style::default().fg(Color::White)),
-                    ]
-                }
-            } else if text.is_empty() {
-                vec![]
+        // Build spans with padding for full-width highlight
+        // Right-align content when memory pane is on the left
+        let mut spans = if memory_pane_left && content_width < panel_width {
+            // Add leading padding for right alignment
+            let padding = " ".repeat(panel_width - content_width);
+            if text.is_empty() {
+                vec![Span::raw(padding)]
             } else {
-                vec![Span::styled(text, Style::default().fg(Color::White))]
-            };
-
-            // Add trailing padding for left-aligned content (when pane is on right)
-            if !memory_pane_left && is_current_line && content_width < panel_width {
-                let padding = " ".repeat(panel_width - content_width);
-                spans.push(Span::raw(padding));
+                vec![Span::raw(padding), Span::styled(text, Style::default())]
             }
+        } else if text.is_empty() {
+            vec![]
+        } else {
+            vec![Span::styled(text, Style::default())]
+        };
 
-            let mut line = Line::from(spans);
+        // Add trailing padding for left-aligned content (when pane is on right)
+        if !memory_pane_left && is_current_line && content_width < panel_width {
+            let padding = " ".repeat(panel_width - content_width);
+            spans.push(Span::raw(padding));
+        }
 
-            if is_current_line {
-                line = line.style(highlight_style);
-            }
+        let mut line = Line::from(spans);
 
-            line
-        })
-        .collect()
+        if is_current_line {
+            line = line.style(highlight_style);
+        }
+
+        output.push(line);
+
+        // Add empty line for error message to maintain alignment with input panel
+        if matches!(result, LineResult::Error(_)) {
+            output.push(Line::from(""));
+        }
+    }
+
+    output
 }
 
 /// Returns the style used for highlighting the current line.
 ///
-/// Uses a dark grey background color that matches the command bar.
+/// Uses reversed video for terminal-agnostic visibility.
 #[must_use]
 pub fn current_line_highlight_style() -> Style {
-    Style::default().bg(Color::DarkGray)
+    Style::default().add_modifier(Modifier::REVERSED)
 }
 
 /// Builds styled text lines for the input panel with current line highlighting.
@@ -313,7 +322,7 @@ pub fn build_input_lines_with_highlight<'a>(
         if let Some(LineResult::Error(err)) = result {
             let error_line = Line::from(Span::styled(
                 format!("  ^ {}", err.message()),
-                Style::default().fg(ACCENT_COLOR),
+                Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
             ));
             output.push(error_line);
         }
@@ -326,6 +335,8 @@ pub fn build_input_lines_with_highlight<'a>(
 ///
 /// Results are aligned with their corresponding input lines.
 /// Empty lines and error lines show nothing but still receive highlighting.
+/// For error lines, an additional empty line is added to account for the
+/// error message line in the input panel.
 ///
 /// # Arguments
 /// * `results` - The evaluation results to display
@@ -339,25 +350,29 @@ pub fn build_result_lines_with_highlight(
     current_row: usize,
 ) -> Vec<Line<'_>> {
     let highlight_style = current_line_highlight_style();
+    let mut output = Vec::new();
 
-    results
-        .iter()
-        .enumerate()
-        .map(|(i, result)| {
-            let is_current_line = i == current_row;
+    for (i, result) in results.iter().enumerate() {
+        let is_current_line = i == current_row;
 
-            let mut line = format_result(result).map_or_else(
-                || Line::from(""),
-                |text| Line::from(Span::styled(text, Style::default().fg(Color::White))),
-            );
+        let mut line = format_result(result).map_or_else(
+            || Line::from(""),
+            |text| Line::from(Span::styled(text, Style::default())),
+        );
 
-            if is_current_line {
-                line = line.style(highlight_style);
-            }
+        if is_current_line {
+            line = line.style(highlight_style);
+        }
 
-            line
-        })
-        .collect()
+        output.push(line);
+
+        // Add empty line for error message to maintain alignment with input panel
+        if matches!(result, LineResult::Error(_)) {
+            output.push(Line::from(""));
+        }
+    }
+
+    output
 }
 
 // ============================================================
@@ -446,7 +461,7 @@ fn build_error_spans_with_offset<'a>(
     visible_width: usize,
 ) -> Vec<Span<'a>> {
     let error_style = Style::default()
-        .fg(ACCENT_COLOR)
+        .fg(Color::Red)
         .add_modifier(Modifier::UNDERLINED);
 
     // Calculate the visible slice of the line
@@ -578,7 +593,7 @@ pub fn build_visible_input_lines_with_gutter<'a>(
             let indent = " ".repeat(gutter_width);
             let error_line = Line::from(Span::styled(
                 format!("{}  ^ {}", indent, err.message()),
-                Style::default().fg(ACCENT_COLOR),
+                Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
             ));
             output.push(error_line);
         }
@@ -668,26 +683,24 @@ const fn calculator_panel_title_with_emoji_support(supports_emoji: bool) -> &'st
 /// # Returns
 /// A Block configured with:
 /// - Branded title with emoji (or without if emoji unsupported)
-/// - Full-width rusty-red underline border below title
+/// - Full-width underline border below title using default terminal color
 #[must_use]
 pub fn input_panel_block() -> Block<'static> {
     Block::default()
         .title(calculator_panel_title())
         .borders(Borders::TOP)
-        .border_style(Style::default().fg(ACCENT_COLOR))
 }
 
-/// Creates a Block widget for the memory panel with dark-grey background and conditional red border.
+/// Creates a Block widget for the memory panel.
 ///
 /// # Arguments
-/// * `memory_pane_left` - When true, red border on right side and title right-aligned; when false, red border on left side and title left-aligned
+/// * `memory_pane_left` - When true, border on right side and title right-aligned; when false, border on left side and title left-aligned
 ///
 /// # Returns
 /// A Block configured with:
 /// - Title "Memory" (right-aligned when pane is on left, left-aligned when on right)
-/// - Dark-grey background
-/// - Full-width rusty-red underline border below title
-/// - Red border on the side adjacent to the input panel
+/// - Top border below title
+/// - Side border adjacent to the input panel
 #[must_use]
 pub fn memory_panel_block(memory_pane_left: bool) -> Block<'static> {
     let (side_border, title_alignment) = if memory_pane_left {
@@ -699,8 +712,6 @@ pub fn memory_panel_block(memory_pane_left: bool) -> Block<'static> {
         .title("Memory")
         .title_alignment(title_alignment)
         .borders(Borders::TOP | side_border)
-        .border_style(Style::default().fg(ACCENT_COLOR))
-        .style(Style::default().bg(Color::Rgb(30, 30, 30)))
 }
 
 /// Renders the input panel with buffer content, error highlighting, current line highlighting,
@@ -822,12 +833,10 @@ pub fn render_result_panel(
 /// Builds the styled text line for the command bar.
 ///
 /// Returns a Line containing all keyboard shortcuts with consistent styling.
-/// Keys are highlighted in rusty-red bold, descriptions are plain text.
+/// Keys are bold, descriptions are plain text.
 #[must_use]
 pub fn build_command_bar_text<'a>() -> Line<'a> {
-    let key_style = Style::default()
-        .fg(ACCENT_COLOR)
-        .add_modifier(Modifier::BOLD);
+    let key_style = Style::default().add_modifier(Modifier::BOLD);
 
     Line::from(vec![
         Span::styled("CTRL+Q", key_style),
@@ -846,13 +855,14 @@ pub fn build_command_bar_text<'a>() -> Line<'a> {
 /// Renders the command bar at the bottom of the screen.
 ///
 /// Displays available keyboard commands: "CTRL+Q: quit  CTRL+R: clear  CTRL+H: help  ↑↓: history"
+/// A horizontal line separator appears above the command text.
 ///
 /// # Arguments
 /// * `frame` - The ratatui Frame to render to
-/// * `area` - The area to render the command bar in (should be 1 row)
+/// * `area` - The area to render the command bar in (should be 2 rows: 1 for separator, 1 for text)
 pub fn render_command_bar(frame: &mut Frame, area: Rect) {
     let command_text = build_command_bar_text();
-    let command_bar = Paragraph::new(command_text).style(Style::default().bg(Color::DarkGray));
+    let command_bar = Paragraph::new(command_text).block(Block::default().borders(Borders::TOP));
 
     frame.render_widget(command_bar, area);
 }
@@ -967,9 +977,7 @@ pub const fn centered_rect(area: Rect, width_percent: u16, height_percent: u16) 
 #[must_use]
 pub fn build_help_content_lines(scroll_offset: usize, visible_height: usize) -> Vec<Line<'static>> {
     let all_lines = help_content_lines();
-    let header_style = Style::default()
-        .fg(Color::White)
-        .add_modifier(Modifier::BOLD);
+    let header_style = Style::default().add_modifier(Modifier::BOLD);
 
     let start = scroll_offset.min(all_lines.len());
     let end = (scroll_offset + visible_height).min(all_lines.len());
@@ -1036,11 +1044,9 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, scroll_offset: usize) 
         .title(title)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(ACCENT_COLOR));
+        .border_style(Style::default());
 
-    let paragraph = Paragraph::new(content)
-        .block(block)
-        .style(Style::default().bg(Color::Black));
+    let paragraph = Paragraph::new(content).block(block);
 
     frame.render_widget(paragraph, overlay_area);
 }
@@ -1244,19 +1250,19 @@ mod tests {
     }
 
     #[test]
-    fn test_build_error_line_uses_rusty_red_color() {
+    fn test_build_error_line_uses_semantic_red_color() {
         let line = "invalid expression";
         let error = EvalError::new("syntax error");
 
         let styled_line = build_error_line(line, &error);
 
-        // Error style should use rusty-red color (RGB 139, 69, 19)
+        // Error style should use semantic red color
         assert_eq!(styled_line.spans.len(), 1);
         let span_style = styled_line.spans[0].style;
         assert_eq!(
             span_style.fg,
-            Some(ACCENT_COLOR),
-            "Error text should use rusty-red accent color"
+            Some(Color::Red),
+            "Error text should use semantic red color"
         );
     }
 
@@ -1290,9 +1296,11 @@ mod tests {
 
         let output = build_result_lines(&results);
 
-        assert_eq!(output.len(), 1);
-        // The line should be empty (errors shown in input panel)
+        // Error produces 2 lines: empty result + empty line for error message alignment
+        assert_eq!(output.len(), 2);
+        // Both lines should be empty (errors shown in input panel)
         assert!(output[0].spans.is_empty() || output[0].to_string().is_empty());
+        assert!(output[1].spans.is_empty() || output[1].to_string().is_empty());
     }
 
     #[test]
@@ -1309,7 +1317,8 @@ mod tests {
 
         let output = build_result_lines(&results);
 
-        assert_eq!(output.len(), 4);
+        // 4 results + 1 extra empty line for error = 5 lines
+        assert_eq!(output.len(), 5);
     }
 
     #[test]
@@ -1340,12 +1349,12 @@ mod tests {
 
         let output = build_input_lines_with_highlight(&lines, &results, current_row);
 
-        // Line 0 should be highlighted
+        // Line 0 should be highlighted with REVERSED modifier
         assert_eq!(output.len(), 2);
-        // First line should have the highlight style
-        assert!(output[0].style.bg.is_some());
-        // Second line should not have highlight
-        assert!(output[1].style.bg.is_none());
+        // First line should have the highlight style (REVERSED)
+        assert!(output[0].style.add_modifier.contains(Modifier::REVERSED));
+        // Second line should not have REVERSED modifier
+        assert!(!output[1].style.add_modifier.contains(Modifier::REVERSED));
     }
 
     #[test]
@@ -1356,10 +1365,10 @@ mod tests {
 
         let output = build_input_lines_with_highlight(&lines, &results, current_row);
 
-        // First line should not have highlight
-        assert!(output[0].style.bg.is_none());
-        // Second line should have the highlight style
-        assert!(output[1].style.bg.is_some());
+        // First line should not have REVERSED modifier
+        assert!(!output[0].style.add_modifier.contains(Modifier::REVERSED));
+        // Second line should have the highlight style (REVERSED)
+        assert!(output[1].style.add_modifier.contains(Modifier::REVERSED));
     }
 
     #[test]
@@ -1372,10 +1381,10 @@ mod tests {
 
         // Should have 2 lines: the error line and the error message
         assert_eq!(output.len(), 2);
-        // First line (error line) should be highlighted
-        assert!(output[0].style.bg.is_some());
-        // Error message line should not be highlighted (it's not an actual input line)
-        assert!(output[1].style.bg.is_none());
+        // First line (error line) should be highlighted with REVERSED
+        assert!(output[0].style.add_modifier.contains(Modifier::REVERSED));
+        // Error message line should not have REVERSED modifier
+        assert!(!output[1].style.add_modifier.contains(Modifier::REVERSED));
     }
 
     #[test]
@@ -1386,10 +1395,10 @@ mod tests {
         let output = build_result_lines_with_highlight(&results, current_row);
 
         assert_eq!(output.len(), 2);
-        // First line should have highlight
-        assert!(output[0].style.bg.is_some());
-        // Second line should not have highlight
-        assert!(output[1].style.bg.is_none());
+        // First line should have REVERSED modifier
+        assert!(output[0].style.add_modifier.contains(Modifier::REVERSED));
+        // Second line should not have REVERSED modifier
+        assert!(!output[1].style.add_modifier.contains(Modifier::REVERSED));
     }
 
     #[test]
@@ -1399,10 +1408,10 @@ mod tests {
 
         let output = build_result_lines_with_highlight(&results, current_row);
 
-        // First line should not have highlight
-        assert!(output[0].style.bg.is_none());
-        // Second line should have highlight
-        assert!(output[1].style.bg.is_some());
+        // First line should not have REVERSED modifier
+        assert!(!output[0].style.add_modifier.contains(Modifier::REVERSED));
+        // Second line should have REVERSED modifier
+        assert!(output[1].style.add_modifier.contains(Modifier::REVERSED));
     }
 
     #[test]
@@ -1413,16 +1422,18 @@ mod tests {
         let output = build_result_lines_with_highlight(&results, current_row);
 
         assert_eq!(output.len(), 1);
-        // Empty line should still be highlighted when it's the current row
-        assert!(output[0].style.bg.is_some());
+        // Empty line should still have REVERSED modifier when it's the current row
+        assert!(output[0].style.add_modifier.contains(Modifier::REVERSED));
     }
 
     #[test]
-    fn test_current_line_highlight_style_uses_dark_gray() {
-        // Verify the highlight color matches the command bar (DarkGray)
+    fn test_current_line_highlight_style_uses_reversed() {
+        // Verify the highlight uses REVERSED modifier for theme compatibility
         let style = current_line_highlight_style();
-        assert!(style.bg.is_some());
-        assert_eq!(style.bg, Some(Color::DarkGray));
+        assert!(
+            style.add_modifier.contains(Modifier::REVERSED),
+            "Current line highlight should use REVERSED modifier"
+        );
     }
 
     // ============================================================
@@ -1570,38 +1581,37 @@ mod tests {
 
         let (output, _) = build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 1, 0, 80);
 
-        // First line should not be highlighted
-        assert!(output[0].style.bg.is_none());
-        // Second line (current_row = 1) should be highlighted
-        assert!(output[1].style.bg.is_some());
+        // First line should not have REVERSED modifier
+        assert!(!output[0].style.add_modifier.contains(Modifier::REVERSED));
+        // Second line (current_row = 1) should have REVERSED modifier
+        assert!(output[1].style.add_modifier.contains(Modifier::REVERSED));
     }
 
     #[test]
     fn test_line_number_visible_on_highlighted_line() {
         // Line numbers SHALL be visible even when the current line is highlighted.
-        // This means the line number foreground color must contrast with the
-        // highlight background color.
+        // With REVERSED modifier, terminal swaps fg/bg, so we verify REVERSED is set.
         let lines = vec!["test line".to_string()];
         let results = vec![LineResult::Empty];
 
         let (output, _) = build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 0, 0, 80);
 
-        // The line is highlighted (current_row = 0)
+        // The line is highlighted (current_row = 0) with REVERSED modifier
         let line = &output[0];
-        let highlight_bg = line.style.bg;
         assert!(
-            highlight_bg.is_some(),
-            "Current line should have background highlight"
+            line.style.add_modifier.contains(Modifier::REVERSED),
+            "Current line should have REVERSED modifier for highlighting"
         );
 
-        // The first span is the line number - verify its foreground differs from background
+        // The first span is the line number - verify it exists and has proper gutter style
         let line_num_span = &line.spans[0];
         let gutter_fg = line_num_span.style.fg;
 
-        // The gutter foreground must NOT equal the highlight background
-        assert_ne!(
-            gutter_fg, highlight_bg,
-            "Line number foreground ({gutter_fg:?}) must differ from highlight background ({highlight_bg:?}) for visibility"
+        // Gutter should have Gray foreground for visibility
+        assert_eq!(
+            gutter_fg,
+            Some(Color::Gray),
+            "Line number should use Gray foreground for visibility"
         );
     }
 
@@ -1812,12 +1822,15 @@ mod tests {
     #[test]
     fn test_command_bar_text_uses_rusty_red_for_shortcuts() {
         let text = build_command_bar_text();
-        // Keyboard shortcuts should use rusty-red color (RGB 139, 69, 19)
+        // Keyboard shortcuts should use bold styling with default text color
         let first_span = &text.spans[0];
+        assert!(
+            first_span.style.add_modifier.contains(Modifier::BOLD),
+            "Keyboard shortcuts should be bold"
+        );
         assert_eq!(
-            first_span.style.fg,
-            Some(ACCENT_COLOR),
-            "Keyboard shortcuts should use rusty-red accent color"
+            first_span.style.fg, None,
+            "Keyboard shortcuts should use default text color (no foreground color set)"
         );
     }
 
@@ -1995,10 +2008,10 @@ mod tests {
 
         // Empty line when current should be padded to full width
         let first_line = &output[0];
-        // Empty lines should still have the highlight style applied
+        // Empty lines should still have the REVERSED modifier applied
         assert!(
-            first_line.style.bg.is_some(),
-            "Empty current line should have highlight"
+            first_line.style.add_modifier.contains(Modifier::REVERSED),
+            "Empty current line should have REVERSED modifier"
         );
     }
 
@@ -2010,17 +2023,17 @@ mod tests {
 
         let output = build_visible_input_lines_with_highlight(&lines, &results, 0, 10, current_row);
 
-        // Verify the line style has background color applied
-        // This means the highlight style covers the entire line, not just content
+        // Verify the line style has REVERSED modifier applied
+        // This means the highlight style covers the entire line
         assert!(
-            output[0].style.bg.is_some(),
-            "Current line should have background highlight style"
+            output[0].style.add_modifier.contains(Modifier::REVERSED),
+            "Current line should have REVERSED modifier"
         );
-        // The style should be the current line highlight style (subtle gray)
+        // The style should match the current line highlight style
         let expected_style = current_line_highlight_style();
         assert_eq!(
-            output[0].style.bg, expected_style.bg,
-            "Line should use the current line highlight background"
+            output[0].style.add_modifier, expected_style.add_modifier,
+            "Line should use the current line highlight modifier"
         );
     }
 
@@ -2036,8 +2049,8 @@ mod tests {
 
         // The Line's style (not span's style) determines full-width highlight
         assert!(
-            output[0].style.bg.is_some(),
-            "Line style should have background for full-width highlight"
+            output[0].style.add_modifier.contains(Modifier::REVERSED),
+            "Line style should have REVERSED modifier for full-width highlight"
         );
     }
 
@@ -2232,13 +2245,12 @@ mod tests {
 
         // First line should be "=== General Usage ===" which is styled as header
         let first_line = &lines[0];
-        // Headers should have white bold style
+        // Headers should have bold style (no fixed color for theme compatibility)
         if !first_line.spans.is_empty() {
             let style = first_line.spans[0].style;
-            assert_eq!(
-                style.fg,
-                Some(Color::White),
-                "Header should be styled white"
+            assert!(
+                style.add_modifier.contains(Modifier::BOLD),
+                "Header should be styled bold"
             );
         }
     }

@@ -5,6 +5,9 @@
 mod highlight;
 mod layout;
 mod render;
+mod theme;
+
+pub use theme::AppTheme;
 
 pub use highlight::{Token, TokenType, highlight_line, token_style, tokenize};
 
@@ -100,9 +103,9 @@ mod tests {
         let area = Rect::new(0, 0, 100, 50);
         let areas = create_main_layout(area);
 
-        // Main layout should have content area and command bar
-        assert_eq!(areas.content_area.height, 49);
-        assert_eq!(areas.command_bar.height, 1);
+        // Main layout should have content area and command bar (2 rows: separator + text)
+        assert_eq!(areas.content_area.height, 48);
+        assert_eq!(areas.command_bar.height, 2);
     }
 
     #[test]
