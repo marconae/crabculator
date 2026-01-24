@@ -1,6 +1,6 @@
 //! Theme detection for Crabculator.
 
-use terminal_colorsaurus::{ColorScheme, QueryOptions, color_scheme};
+use terminal_colorsaurus::{QueryOptions, ThemeMode, theme_mode};
 
 /// Detected terminal theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,10 +15,10 @@ impl AppTheme {
     /// Falls back to Dark theme if detection fails.
     #[must_use]
     pub fn detect() -> Self {
-        color_scheme(QueryOptions::default())
-            .map(|scheme| match scheme {
-                ColorScheme::Light => Self::Light,
-                ColorScheme::Dark => Self::Dark,
+        theme_mode(QueryOptions::default())
+            .map(|mode| match mode {
+                ThemeMode::Light => Self::Light,
+                ThemeMode::Dark => Self::Dark,
             })
             .unwrap_or(Self::Dark)
     }
