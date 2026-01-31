@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::editor::Buffer;
 use crate::eval::EvalContext;
 use crate::storage;
@@ -14,6 +16,7 @@ pub struct App {
     pub help_scroll_offset: usize,
     pub memory_pane_left: bool,
     pub theme: AppTheme,
+    pub last_edit_time: Option<Instant>,
 }
 
 impl App {
@@ -39,6 +42,7 @@ impl App {
             help_scroll_offset: 0,
             memory_pane_left: true,
             theme: AppTheme::detect(),
+            last_edit_time: None,
         }
     }
 
@@ -623,5 +627,11 @@ mod tests {
     fn test_app_new_initializes_horizontal_scroll_offset_to_zero() {
         let app = App::new();
         assert_eq!(app.horizontal_scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_app_new_initializes_last_edit_time_to_none() {
+        let app = App::new();
+        assert!(app.last_edit_time.is_none());
     }
 }

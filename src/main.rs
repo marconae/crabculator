@@ -1,4 +1,5 @@
 use std::io;
+use std::time::Instant;
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 
@@ -6,6 +7,7 @@ use crabculator::app;
 use crabculator::terminal;
 use crabculator::ui;
 
+#[allow(clippy::too_many_lines)]
 fn main() -> io::Result<()> {
     terminal::install_panic_hook();
 
@@ -61,6 +63,7 @@ fn main() -> io::Result<()> {
                     }
                     KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.clear_all();
+                        app.last_edit_time = Some(Instant::now());
                         should_save = true;
                     }
                     KeyCode::Esc => {
@@ -68,18 +71,22 @@ fn main() -> io::Result<()> {
                     }
                     KeyCode::Char(c) => {
                         app.buffer.insert_char(c);
+                        app.last_edit_time = Some(Instant::now());
                         should_save = true;
                     }
                     KeyCode::Enter => {
                         app.buffer.insert_newline();
+                        app.last_edit_time = Some(Instant::now());
                         should_save = true;
                     }
                     KeyCode::Backspace => {
                         app.buffer.delete_char_before();
+                        app.last_edit_time = Some(Instant::now());
                         should_save = true;
                     }
                     KeyCode::Delete => {
                         app.buffer.delete_char_at();
+                        app.last_edit_time = Some(Instant::now());
                         should_save = true;
                     }
                     KeyCode::Left | KeyCode::Right

@@ -27,11 +27,20 @@ The error display system integrates with the expression evaluator to receive err
 
 * *GIVEN* an expression has been evaluated
 * *WHEN* an expression evaluation produces an error
+* *AND* at least 500 milliseconds have elapsed since the last edit on that line
 * *THEN* the error message SHALL be displayed on the line below the expression
 * *AND* the error message SHALL be styled with dim and italic modifiers
 * *AND* the error message SHALL NOT use a fixed color (adapts to terminal theme)
 * *AND* the error message SHALL include a caret (^) pointing to the error location
 * *AND* the error message SHALL be indented to align with the error position
+
+### Scenario: Suppress error message while typing
+
+* *GIVEN* the user is editing an expression
+* *WHEN* an expression contains an error
+* *AND* fewer than 500 milliseconds have elapsed since the last edit
+* *THEN* the error message SHALL NOT be displayed
+* *AND* the error underline highlighting SHALL still be shown
 
 ### Scenario: Error message content
 

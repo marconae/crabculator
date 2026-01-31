@@ -13,11 +13,10 @@ pub use highlight::{Token, TokenType, highlight_line, token_style, tokenize};
 
 pub use layout::{LayoutAreas, create_main_layout, create_panel_layout};
 pub use render::{
-    HELP_CONTENT_HEIGHT, build_help_content_lines, build_input_lines,
-    build_input_lines_with_highlight, build_result_lines, build_result_lines_with_highlight,
-    build_visible_input_lines_with_highlight, build_visible_result_lines_with_highlight,
-    centered_rect, current_line_highlight_style, format_result, help_content_lines,
-    render_command_bar, render_help_overlay, render_input_panel, render_result_panel,
+    HELP_CONTENT_HEIGHT, build_help_content_lines, build_input_lines, build_result_lines,
+    build_visible_input_lines, build_visible_result_lines, centered_rect, format_result,
+    help_content_lines, render_command_bar, render_help_overlay, render_input_panel,
+    render_result_panel,
 };
 
 use crate::app::App;
@@ -62,24 +61,21 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         &mut app.context,
     );
 
-    // Get cursor row for current line highlighting (synced between both panels)
-    let current_row = app.buffer.cursor().row();
-
-    // Render input panel with buffer content, error highlighting, and current line highlighting
+    // Render input panel with buffer content and error highlighting
     render_input_panel(
         frame,
         panels[input_panel_idx],
         &app.buffer,
         app.scroll_offset,
         app.horizontal_scroll_offset,
+        app.last_edit_time,
     );
 
-    // Render result panel with evaluation results and current line highlighting
+    // Render result panel with evaluation results
     render_result_panel(
         frame,
         panels[memory_panel_idx],
         &results,
-        current_row,
         app.scroll_offset,
         app.memory_pane_left,
     );

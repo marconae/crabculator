@@ -5,6 +5,8 @@
 //! - Error message display below error lines
 //! - Result panel with aligned evaluation results
 
+use std::time::{Duration, Instant};
+
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
@@ -44,6 +46,44 @@ fn format_value(value: f64) -> String {
         format!("{value:.0}")
     } else {
         value.to_string()
+    }
+}
+
+/// Truncates a formatted value string for display in the memory pane.
+///
+/// Numbers longer than 12 characters are truncated to 9 characters plus "...".
+/// Numbers 12 characters or shorter are displayed in full.
+/// Negative signs and decimal points count toward the character limit.
+#[must_use]
+pub fn format_value_truncated(value: &str) -> String {
+    if value.len() > 12 {
+        format!("{}...", &value[..9])
+    } else {
+        value.to_string()
+    }
+}
+
+/// Formats a `LineResult` for display in the memory pane with truncation.
+///
+/// Applies truncation to numeric values that exceed 12 characters.
+/// For assignments, only the value portion is truncated, not the variable name.
+///
+/// # Returns
+/// - `Some(String)` with the formatted (possibly truncated) result for values and assignments
+/// - `None` for empty lines or errors
+#[must_use]
+fn format_result_for_memory_pane(result: &LineResult) -> Option<String> {
+    match result {
+        LineResult::Value(value) => {
+            let formatted = format_value(*value);
+            Some(format_value_truncated(&formatted))
+        }
+        LineResult::Assignment { name, value } => {
+            let formatted_value = format_value(*value);
+            let truncated_value = format_value_truncated(&formatted_value);
+            Some(format!("{name} = {truncated_value}"))
+        }
+        LineResult::Empty | LineResult::Error(_) => None,
     }
 }
 
@@ -158,17 +198,15 @@ pub fn build_result_lines(results: &[LineResult]) -> Vec<Line<'_>> {
     output
 }
 
-/// Builds visible input lines with scrolling and current line highlighting.
+/// Builds visible input lines with scrolling.
 #[must_use]
-pub fn build_visible_input_lines_with_highlight<'a>(
+pub fn build_visible_input_lines<'a>(
     lines: &'a [String],
     results: &'a [LineResult],
     scroll_offset: usize,
     visible_height: usize,
-    current_row: usize,
 ) -> Vec<Line<'a>> {
     let mut output: Vec<Line<'a>> = Vec::new();
-    let highlight_style = current_line_highlight_style();
 
     // Calculate the range of lines to render
     let start = scroll_offset.min(lines.len());
@@ -176,22 +214,16 @@ pub fn build_visible_input_lines_with_highlight<'a>(
 
     for (i, line_text) in lines.iter().enumerate().take(end).skip(start) {
         let result = results.get(i);
-        let is_current_line = i == current_row;
 
         // Build the main line with potential error or syntax highlighting
-        let mut styled_line = match result {
+        let styled_line = match result {
             Some(LineResult::Error(err)) => build_error_line(line_text, err),
             _ => Line::from(highlight_line(line_text)),
         };
 
-        // Apply current line highlight
-        if is_current_line {
-            styled_line = styled_line.style(highlight_style);
-        }
-
         output.push(styled_line);
 
-        // Add error message below error lines (without highlight)
+        // Add error message below error lines
         if let Some(LineResult::Error(err)) = result {
             let error_line = Line::from(Span::styled(
                 format!("  ^ {}", err.message()),
@@ -204,35 +236,30 @@ pub fn build_visible_input_lines_with_highlight<'a>(
     output
 }
 
-/// Builds visible result lines with scrolling and current line highlighting.
+/// Builds visible result lines with scrolling.
 ///
 /// Results are aligned with their corresponding input lines, including
 /// empty lines for error messages to maintain visual alignment.
 #[must_use]
-pub fn build_visible_result_lines_with_highlight(
+pub fn build_visible_result_lines(
     results: &[LineResult],
     scroll_offset: usize,
     visible_height: usize,
-    current_row: usize,
     panel_width: usize,
     memory_pane_left: bool,
 ) -> Vec<Line<'_>> {
-    let highlight_style = current_line_highlight_style();
     let mut output: Vec<Line<'_>> = Vec::new();
 
     // Calculate the range of results to render (in expression space)
     let start = scroll_offset.min(results.len());
     let end = (scroll_offset + visible_height).min(results.len());
 
-    for (i, result) in results.iter().enumerate().take(end).skip(start) {
-        let is_current_line = i == current_row;
-
-        let text = format_result(result).unwrap_or_default();
+    for result in results.iter().take(end).skip(start) {
+        let text = format_result_for_memory_pane(result).unwrap_or_default();
         let content_width = text.len();
 
-        // Build spans with padding for full-width highlight
         // Right-align content when memory pane is on the left
-        let mut spans = if memory_pane_left && content_width < panel_width {
+        let spans = if memory_pane_left && content_width < panel_width {
             // Add leading padding for right alignment
             let padding = " ".repeat(panel_width - content_width);
             if text.is_empty() {
@@ -246,123 +273,7 @@ pub fn build_visible_result_lines_with_highlight(
             vec![Span::styled(text, Style::default())]
         };
 
-        // Add trailing padding for left-aligned content (when pane is on right)
-        if !memory_pane_left && is_current_line && content_width < panel_width {
-            let padding = " ".repeat(panel_width - content_width);
-            spans.push(Span::raw(padding));
-        }
-
-        let mut line = Line::from(spans);
-
-        if is_current_line {
-            line = line.style(highlight_style);
-        }
-
-        output.push(line);
-
-        // Add empty line for error message to maintain alignment with input panel
-        if matches!(result, LineResult::Error(_)) {
-            output.push(Line::from(""));
-        }
-    }
-
-    output
-}
-
-/// Returns the style used for highlighting the current line.
-///
-/// Uses reversed video for terminal-agnostic visibility.
-#[must_use]
-pub fn current_line_highlight_style() -> Style {
-    Style::default().add_modifier(Modifier::REVERSED)
-}
-
-/// Builds styled text lines for the input panel with current line highlighting.
-///
-/// Handles:
-/// - Normal text styling
-/// - Error spans with red underline
-/// - Error messages below error lines
-/// - Background highlighting for the current cursor row
-///
-/// # Arguments
-/// * `lines` - The buffer lines to render
-/// * `results` - The evaluation results corresponding to each line
-/// * `current_row` - The row index where the cursor is positioned (0-indexed)
-///
-/// # Returns
-/// A vector of styled `Line` objects ready for rendering.
-#[must_use]
-pub fn build_input_lines_with_highlight<'a>(
-    lines: &'a [String],
-    results: &'a [LineResult],
-    current_row: usize,
-) -> Vec<Line<'a>> {
-    let mut output: Vec<Line<'a>> = Vec::new();
-    let highlight_style = current_line_highlight_style();
-
-    for (i, line_text) in lines.iter().enumerate() {
-        let result = results.get(i);
-        let is_current_line = i == current_row;
-
-        // Build the main line with potential error or syntax highlighting
-        let mut styled_line = match result {
-            Some(LineResult::Error(err)) => build_error_line(line_text, err),
-            _ => Line::from(highlight_line(line_text)),
-        };
-
-        // Apply current line highlight
-        if is_current_line {
-            styled_line = styled_line.style(highlight_style);
-        }
-
-        output.push(styled_line);
-
-        // Add error message below error lines (without highlight)
-        if let Some(LineResult::Error(err)) = result {
-            let error_line = Line::from(Span::styled(
-                format!("  ^ {}", err.message()),
-                Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
-            ));
-            output.push(error_line);
-        }
-    }
-
-    output
-}
-
-/// Builds styled text lines for the result panel with current line highlighting.
-///
-/// Results are aligned with their corresponding input lines.
-/// Empty lines and error lines show nothing but still receive highlighting.
-/// For error lines, an additional empty line is added to account for the
-/// error message line in the input panel.
-///
-/// # Arguments
-/// * `results` - The evaluation results to display
-/// * `current_row` - The row index where the cursor is positioned (0-indexed)
-///
-/// # Returns
-/// A vector of styled `Line` objects ready for rendering.
-#[must_use]
-pub fn build_result_lines_with_highlight(
-    results: &[LineResult],
-    current_row: usize,
-) -> Vec<Line<'_>> {
-    let highlight_style = current_line_highlight_style();
-    let mut output = Vec::new();
-
-    for (i, result) in results.iter().enumerate() {
-        let is_current_line = i == current_row;
-
-        let mut line = format_result(result).map_or_else(
-            || Line::from(""),
-            |text| Line::from(Span::styled(text, Style::default())),
-        );
-
-        if is_current_line {
-            line = line.style(highlight_style);
-        }
+        let line = Line::from(spans);
 
         output.push(line);
 
@@ -435,9 +346,7 @@ pub fn format_line_number(line_number: usize, gutter_width: usize) -> String {
 /// Returns the style for the line number gutter.
 ///
 /// The gutter uses a subtle dimmed foreground color to keep line numbers
-/// visible but unobtrusive. Uses `Gray` (lighter than `DarkGray`) to ensure
-/// visibility even when the current line highlight (`DarkGray` background)
-/// is applied.
+/// visible but unobtrusive.
 #[must_use]
 pub fn gutter_style() -> Style {
     Style::default().fg(Color::Gray)
@@ -506,35 +415,50 @@ fn build_error_spans_with_offset<'a>(
     )
 }
 
-/// Builds visible input lines with scrolling, highlighting, and line number gutter.
+/// Debounce delay for error message display (in milliseconds).
+const ERROR_DEBOUNCE_MS: u64 = 500;
+
+/// Determines if error messages should be displayed based on the debounce timer.
 ///
-/// This combines scrolling, current line highlighting, and line numbers.
-/// Lines are padded to fill the panel width for full-width highlighting.
+/// Error messages are shown if:
+/// - `last_edit_time` is `None` (initial state, no edits yet), or
+/// - At least 500ms have elapsed since the last edit
+///
+/// The error underline is always shown regardless of this debounce check.
+#[must_use]
+fn should_show_error_message(last_edit_time: Option<Instant>) -> bool {
+    last_edit_time
+        .is_none_or(|edit_time| edit_time.elapsed() >= Duration::from_millis(ERROR_DEBOUNCE_MS))
+}
+
+/// Builds visible input lines with scrolling and line number gutter.
+///
+/// This combines scrolling and line numbers.
 ///
 /// # Arguments
 /// * `lines` - The buffer lines to render
 /// * `results` - The evaluation results corresponding to each line
 /// * `scroll_offset` - The first visible line index (0-based)
 /// * `visible_height` - The number of visible lines in the viewport
-/// * `current_row` - The row index where the cursor is positioned (0-indexed)
 /// * `horizontal_scroll_offset` - The first visible column index (0-based)
 /// * `visible_width` - The number of visible columns in the viewport (including gutter)
+/// * `last_edit_time` - The time of the last buffer modification, for error message debouncing
 ///
 /// # Returns
 /// A tuple of (styled lines, gutter width) for rendering.
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn build_visible_input_lines_with_gutter<'a>(
     lines: &'a [String],
     results: &'a [LineResult],
     scroll_offset: usize,
     visible_height: usize,
-    current_row: usize,
     horizontal_scroll_offset: usize,
     visible_width: usize,
+    last_edit_time: Option<Instant>,
 ) -> (Vec<Line<'a>>, usize) {
     let gutter_width = calculate_gutter_width(lines.len());
     let gutter_style_val = gutter_style();
-    let highlight_style = current_line_highlight_style();
     let mut output: Vec<Line<'a>> = Vec::new();
 
     // Calculate the range of lines to render
@@ -547,7 +471,6 @@ pub fn build_visible_input_lines_with_gutter<'a>(
     for (i, line_text) in lines.iter().enumerate().take(end).skip(start) {
         let line_number = i + 1; // 1-based line numbers
         let result = results.get(i);
-        let is_current_line = i == current_row;
 
         // Build the line number span
         let line_num_str = format_line_number(line_number, gutter_width);
@@ -569,26 +492,15 @@ pub fn build_visible_input_lines_with_gutter<'a>(
         let mut all_spans = vec![line_num_span];
         all_spans.extend(content_spans);
 
-        // Calculate total width of spans and add padding for full-width highlight
-        if is_current_line {
-            let spans_width: usize = all_spans.iter().map(|s| s.content.len()).sum();
-            if spans_width < visible_width {
-                let padding = " ".repeat(visible_width - spans_width);
-                all_spans.push(Span::raw(padding));
-            }
-        }
-
-        let mut styled_line = Line::from(all_spans);
-
-        // Apply current line highlight
-        if is_current_line {
-            styled_line = styled_line.style(highlight_style);
-        }
+        let styled_line = Line::from(all_spans);
 
         output.push(styled_line);
 
-        // Add error message below error lines (indented, no line number, no highlight)
-        if let Some(LineResult::Error(err)) = result {
+        // Add error message below error lines (indented, no line number)
+        // Only show error message if 500ms+ has elapsed since last edit (debounce)
+        if let Some(LineResult::Error(err)) = result
+            && should_show_error_message(last_edit_time)
+        {
             // Create indentation matching gutter width
             let indent = " ".repeat(gutter_width);
             let error_line = Line::from(Span::styled(
@@ -714,7 +626,7 @@ pub fn memory_panel_block(memory_pane_left: bool) -> Block<'static> {
         .borders(Borders::TOP | side_border)
 }
 
-/// Renders the input panel with buffer content, error highlighting, current line highlighting,
+/// Renders the input panel with buffer content, error highlighting,
 /// line number gutter, and scrolling support.
 ///
 /// # Arguments
@@ -723,17 +635,19 @@ pub fn memory_panel_block(memory_pane_left: bool) -> Block<'static> {
 /// * `buffer` - The text buffer containing input lines
 /// * `scroll_offset` - The first visible line index (0-based)
 /// * `horizontal_scroll_offset` - The first visible column index (0-based)
+/// * `last_edit_time` - The time of the last buffer modification, for error message debouncing
 pub fn render_input_panel(
     frame: &mut Frame,
     area: Rect,
     buffer: &Buffer,
     scroll_offset: usize,
     horizontal_scroll_offset: usize,
+    last_edit_time: Option<Instant>,
 ) {
     // Evaluate all lines to get results
     let results = evaluate_all_lines(buffer.lines().iter().map(String::as_str));
 
-    // Get cursor row for highlighting
+    // Get cursor row for positioning
     let cursor_row = buffer.cursor().row();
 
     // Calculate visible height (area height minus title row, no borders)
@@ -748,9 +662,9 @@ pub fn render_input_panel(
         &results,
         scroll_offset,
         visible_height,
-        cursor_row,
         horizontal_scroll_offset,
         visible_width,
+        last_edit_time,
     );
 
     // Create the paragraph widget with title but no borders
@@ -787,24 +701,21 @@ pub fn render_input_panel(
     }
 }
 
-/// Renders the result panel with evaluation results, current line highlighting, and scrolling.
+/// Renders the result panel with evaluation results and scrolling.
 ///
 /// Results are aligned with their corresponding input lines.
-/// The line at `current_row` is highlighted to match the editor cursor position.
 /// Only visible lines (based on `scroll_offset`) are rendered.
 ///
 /// # Arguments
 /// * `frame` - The ratatui Frame to render to
 /// * `area` - The area to render the panel in
 /// * `results` - The evaluation results to display
-/// * `current_row` - The row index where the cursor is positioned (0-indexed)
 /// * `scroll_offset` - The first visible line index (0-based)
 /// * `memory_pane_left` - Whether the memory pane is on the left side
 pub fn render_result_panel(
     frame: &mut Frame,
     area: Rect,
     results: &[LineResult],
-    current_row: usize,
     scroll_offset: usize,
     memory_pane_left: bool,
 ) {
@@ -814,11 +725,10 @@ pub fn render_result_panel(
     // Calculate panel width (area width minus borders)
     let panel_width = area.width.saturating_sub(2) as usize;
 
-    let styled_lines = build_visible_result_lines_with_highlight(
+    let styled_lines = build_visible_result_lines(
         results,
         scroll_offset,
         visible_height,
-        current_row,
         panel_width,
         memory_pane_left,
     );
@@ -1136,6 +1046,48 @@ mod tests {
         assert_eq!(format_value(value), "0.001");
     }
 
+    #[test]
+    fn test_format_value_truncated_short_number() {
+        // 12 chars or fewer should display in full
+        let result = format_value_truncated("123456789012");
+        assert_eq!(result, "123456789012");
+    }
+
+    #[test]
+    fn test_format_value_truncated_long_number() {
+        // 13+ chars should truncate to first 9 chars + "..."
+        let result = format_value_truncated("1234567890123");
+        assert_eq!(result, "123456789...");
+    }
+
+    #[test]
+    fn test_format_value_truncated_negative_long_number() {
+        // Negative numbers > 12 chars should truncate, including the minus sign
+        let result = format_value_truncated("-1234567890123");
+        assert_eq!(result, "-12345678...");
+    }
+
+    #[test]
+    fn test_format_value_truncated_decimal_long_number() {
+        // Decimals > 12 chars should truncate, including decimal point
+        let result = format_value_truncated("123456789.123");
+        assert_eq!(result, "123456789...");
+    }
+
+    #[test]
+    fn test_format_value_truncated_boundary_eleven_chars() {
+        // 11 chars should display in full (below threshold)
+        let result = format_value_truncated("12345678901");
+        assert_eq!(result, "12345678901");
+    }
+
+    #[test]
+    fn test_format_value_truncated_thirteen_chars_boundary() {
+        // 13 chars is the minimum length that triggers truncation
+        let result = format_value_truncated("1234567890123");
+        assert_eq!(result, "123456789...");
+    }
+
     // ============================================================
     // build_input_lines tests
     // ============================================================
@@ -1338,105 +1290,6 @@ mod tests {
     }
 
     // ============================================================
-    // Current line highlighting tests
-    // ============================================================
-
-    #[test]
-    fn test_build_input_lines_with_highlight_highlights_current_row() {
-        let lines = vec!["5 + 3".to_string(), "10 * 2".to_string()];
-        let results = vec![LineResult::Value(8.0), LineResult::Value(20.0)];
-        let current_row = 0;
-
-        let output = build_input_lines_with_highlight(&lines, &results, current_row);
-
-        // Line 0 should be highlighted with REVERSED modifier
-        assert_eq!(output.len(), 2);
-        // First line should have the highlight style (REVERSED)
-        assert!(output[0].style.add_modifier.contains(Modifier::REVERSED));
-        // Second line should not have REVERSED modifier
-        assert!(!output[1].style.add_modifier.contains(Modifier::REVERSED));
-    }
-
-    #[test]
-    fn test_build_input_lines_with_highlight_second_row() {
-        let lines = vec!["5 + 3".to_string(), "10 * 2".to_string()];
-        let results = vec![LineResult::Value(8.0), LineResult::Value(20.0)];
-        let current_row = 1;
-
-        let output = build_input_lines_with_highlight(&lines, &results, current_row);
-
-        // First line should not have REVERSED modifier
-        assert!(!output[0].style.add_modifier.contains(Modifier::REVERSED));
-        // Second line should have the highlight style (REVERSED)
-        assert!(output[1].style.add_modifier.contains(Modifier::REVERSED));
-    }
-
-    #[test]
-    fn test_build_input_lines_with_highlight_error_line_still_highlighted() {
-        let lines = vec!["invalid".to_string()];
-        let results = vec![LineResult::Error(EvalError::new("undefined variable"))];
-        let current_row = 0;
-
-        let output = build_input_lines_with_highlight(&lines, &results, current_row);
-
-        // Should have 2 lines: the error line and the error message
-        assert_eq!(output.len(), 2);
-        // First line (error line) should be highlighted with REVERSED
-        assert!(output[0].style.add_modifier.contains(Modifier::REVERSED));
-        // Error message line should not have REVERSED modifier
-        assert!(!output[1].style.add_modifier.contains(Modifier::REVERSED));
-    }
-
-    #[test]
-    fn test_build_result_lines_with_highlight_highlights_current_row() {
-        let results = vec![LineResult::Value(8.0), LineResult::Value(20.0)];
-        let current_row = 0;
-
-        let output = build_result_lines_with_highlight(&results, current_row);
-
-        assert_eq!(output.len(), 2);
-        // First line should have REVERSED modifier
-        assert!(output[0].style.add_modifier.contains(Modifier::REVERSED));
-        // Second line should not have REVERSED modifier
-        assert!(!output[1].style.add_modifier.contains(Modifier::REVERSED));
-    }
-
-    #[test]
-    fn test_build_result_lines_with_highlight_second_row() {
-        let results = vec![LineResult::Value(8.0), LineResult::Value(20.0)];
-        let current_row = 1;
-
-        let output = build_result_lines_with_highlight(&results, current_row);
-
-        // First line should not have REVERSED modifier
-        assert!(!output[0].style.add_modifier.contains(Modifier::REVERSED));
-        // Second line should have REVERSED modifier
-        assert!(output[1].style.add_modifier.contains(Modifier::REVERSED));
-    }
-
-    #[test]
-    fn test_build_result_lines_with_highlight_empty_line_highlighted() {
-        let results = vec![LineResult::Empty];
-        let current_row = 0;
-
-        let output = build_result_lines_with_highlight(&results, current_row);
-
-        assert_eq!(output.len(), 1);
-        // Empty line should still have REVERSED modifier when it's the current row
-        assert!(output[0].style.add_modifier.contains(Modifier::REVERSED));
-    }
-
-    #[test]
-    fn test_current_line_highlight_style_uses_reversed() {
-        // Verify the highlight uses REVERSED modifier for theme compatibility
-        let style = current_line_highlight_style();
-        assert!(
-            style.add_modifier.contains(Modifier::REVERSED),
-            "Current line highlight should use REVERSED modifier"
-        );
-    }
-
-    // ============================================================
     // Line Number Gutter tests
     // ============================================================
 
@@ -1533,8 +1386,7 @@ mod tests {
             style.bg.is_none(),
             "Gutter should not have a distinct background color"
         );
-        // Gutter should have a dimmed foreground color (Gray - lighter than DarkGray
-        // to remain visible when current line highlight is applied)
+        // Gutter should have a dimmed foreground color (Gray)
         assert_eq!(
             style.fg,
             Some(Color::Gray),
@@ -1548,7 +1400,7 @@ mod tests {
         let results: Vec<LineResult> = (0..50).map(|_| LineResult::Empty).collect();
 
         let (output, gutter_width) =
-            build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 0, 0, 80);
+            build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 0, 80, None);
 
         // Should return only 10 visible lines
         assert_eq!(output.len(), 10);
@@ -1562,7 +1414,8 @@ mod tests {
         let lines: Vec<String> = (0..20).map(|i| format!("line {i}")).collect();
         let results: Vec<LineResult> = (0..20).map(|_| LineResult::Empty).collect();
 
-        let (output, _) = build_visible_input_lines_with_gutter(&lines, &results, 10, 5, 12, 0, 80);
+        let (output, _) =
+            build_visible_input_lines_with_gutter(&lines, &results, 10, 5, 0, 80, None);
 
         // Should return 5 lines starting at offset 10
         assert_eq!(output.len(), 5);
@@ -1574,45 +1427,161 @@ mod tests {
         );
     }
 
+    // ============================================================
+    // should_show_error_message tests
+    // ============================================================
+
     #[test]
-    fn test_build_visible_input_lines_with_gutter_highlights_current() {
-        let lines = vec!["line 1".to_string(), "line 2".to_string()];
-        let results = vec![LineResult::Empty, LineResult::Empty];
-
-        let (output, _) = build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 1, 0, 80);
-
-        // First line should not have REVERSED modifier
-        assert!(!output[0].style.add_modifier.contains(Modifier::REVERSED));
-        // Second line (current_row = 1) should have REVERSED modifier
-        assert!(output[1].style.add_modifier.contains(Modifier::REVERSED));
+    fn test_should_show_error_message_none_returns_true() {
+        // None last_edit_time means initial state - should show errors
+        assert!(should_show_error_message(None));
     }
 
     #[test]
-    fn test_line_number_visible_on_highlighted_line() {
-        // Line numbers SHALL be visible even when the current line is highlighted.
-        // With REVERSED modifier, terminal swaps fg/bg, so we verify REVERSED is set.
-        let lines = vec!["test line".to_string()];
-        let results = vec![LineResult::Empty];
+    fn test_should_show_error_message_recent_edit_returns_false() {
+        // Recent edit (< 500ms ago) should hide error message
+        let recent_time = Instant::now();
+        assert!(!should_show_error_message(Some(recent_time)));
+    }
 
-        let (output, _) = build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 0, 0, 80);
+    #[test]
+    fn test_should_show_error_message_old_edit_returns_true() {
+        // Old edit (>= 500ms ago) should show error message
+        let old_time = Instant::now() - Duration::from_millis(600);
+        assert!(should_show_error_message(Some(old_time)));
+    }
 
-        // The line is highlighted (current_row = 0) with REVERSED modifier
-        let line = &output[0];
-        assert!(
-            line.style.add_modifier.contains(Modifier::REVERSED),
-            "Current line should have REVERSED modifier for highlighting"
-        );
+    #[test]
+    fn test_should_show_error_message_exact_boundary() {
+        // At exactly 500ms, should show error message (>= check)
+        let boundary_time = Instant::now() - Duration::from_millis(500);
+        // Note: Due to timing, this could be slightly over 500ms, which is fine
+        assert!(should_show_error_message(Some(boundary_time)));
+    }
 
-        // The first span is the line number - verify it exists and has proper gutter style
-        let line_num_span = &line.spans[0];
-        let gutter_fg = line_num_span.style.fg;
+    // ============================================================
+    // build_visible_input_lines_with_gutter with error debounce tests
+    // ============================================================
 
-        // Gutter should have Gray foreground for visibility
+    #[test]
+    fn test_build_visible_input_lines_with_gutter_error_shown_with_none_last_edit() {
+        // With None last_edit_time, error message line should be included
+        let lines = vec!["5+".to_string()];
+        let results = vec![LineResult::Error(EvalError::new("Incomplete expression"))];
+
+        let (output, _) =
+            build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 0, 80, None);
+
+        // Should have 2 lines: input line + error message line
         assert_eq!(
-            gutter_fg,
-            Some(Color::Gray),
-            "Line number should use Gray foreground for visibility"
+            output.len(),
+            2,
+            "With None last_edit_time, error message should be shown"
         );
+    }
+
+    #[test]
+    fn test_build_visible_input_lines_with_gutter_error_hidden_with_recent_edit() {
+        // With recent last_edit_time, error message line should NOT be included
+        let lines = vec!["5+".to_string()];
+        let results = vec![LineResult::Error(EvalError::new("Incomplete expression"))];
+
+        let recent_time = Instant::now();
+        let (output, _) = build_visible_input_lines_with_gutter(
+            &lines,
+            &results,
+            0,
+            10,
+            0,
+            80,
+            Some(recent_time),
+        );
+
+        // Should have only 1 line: input line (error message debounced)
+        assert_eq!(
+            output.len(),
+            1,
+            "With recent last_edit_time, error message should be hidden"
+        );
+    }
+
+    #[test]
+    fn test_build_visible_input_lines_with_gutter_error_shown_with_old_edit() {
+        // With old last_edit_time (>= 500ms), error message line should be included
+        let lines = vec!["5+".to_string()];
+        let results = vec![LineResult::Error(EvalError::new("Incomplete expression"))];
+
+        let old_time = Instant::now() - Duration::from_millis(600);
+        let (output, _) =
+            build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 0, 80, Some(old_time));
+
+        // Should have 2 lines: input line + error message line
+        assert_eq!(
+            output.len(),
+            2,
+            "With old last_edit_time (>500ms), error message should be shown"
+        );
+    }
+
+    #[test]
+    fn test_build_visible_input_lines_with_gutter_error_underline_always_present() {
+        // Error underline (styling) should be present regardless of debounce
+        // The underline is shown via span styling in the main line, not the message line
+        let lines = vec!["5+".to_string()];
+        let results = vec![LineResult::Error(EvalError::with_span(
+            "Incomplete expression",
+            ErrorSpan::new(1, 2),
+        ))];
+
+        let recent_time = Instant::now();
+        let (output, _) = build_visible_input_lines_with_gutter(
+            &lines,
+            &results,
+            0,
+            10,
+            0,
+            80,
+            Some(recent_time),
+        );
+
+        // Should have only 1 line (error message debounced)
+        assert_eq!(output.len(), 1, "Error message should be debounced");
+        // The line still exists with error spans applied (underline styling)
+        assert!(
+            !output.is_empty(),
+            "Line with error should still be rendered"
+        );
+    }
+
+    // ============================================================
+    // Cursor visibility tests
+    // ============================================================
+
+    #[test]
+    fn test_render_input_panel_sets_cursor_position() {
+        use crate::editor::Buffer;
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let buffer = Buffer::from_lines(vec!["hello".to_string()]);
+        let area = Rect::new(0, 0, 40, 10);
+
+        terminal
+            .draw(|frame| {
+                render_input_panel(frame, area, &buffer, 0, 0, None);
+            })
+            .unwrap();
+
+        // After rendering, cursor should be positioned
+        let cursor = terminal.get_cursor_position().unwrap();
+        // Cursor should be at gutter_width + cursor_col (0), row after title (1)
+        // Gutter for 1 line = 2 (1 digit + 1 space)
+        assert_eq!(cursor.y, 1, "Cursor y should be at row 1 (after title)");
+        // Cursor x should be gutter_width (2) + cursor_col (0) = 2
+        assert!(cursor.x >= 2, "Cursor x should account for gutter width");
     }
 
     // ============================================================
@@ -1928,196 +1897,16 @@ mod tests {
     }
 
     // ==========================================================================
-    // Full-Width Highlighting Tests
+    // Result Lines Alignment Tests
     // ==========================================================================
-
-    #[test]
-    fn test_build_visible_result_lines_with_highlight_pads_to_panel_width() {
-        let results = vec![
-            LineResult::Value(42.0), // "42" is 2 chars
-            LineResult::Value(100.0),
-        ];
-        let current_row = 0;
-        let panel_width = 20;
-        let memory_pane_left = false;
-
-        let output = build_visible_result_lines_with_highlight(
-            &results,
-            0,
-            10,
-            current_row,
-            panel_width,
-            memory_pane_left,
-        );
-
-        // The first line (current row) should have spans totaling panel_width
-        // "42" (2 chars) + padding (18 chars) = 20 chars
-        let first_line = &output[0];
-        let total_content_len: usize = first_line.spans.iter().map(|span| span.content.len()).sum();
-        assert_eq!(
-            total_content_len, panel_width,
-            "Highlighted line should be padded to panel width"
-        );
-    }
-
-    #[test]
-    fn test_build_visible_result_lines_with_highlight_non_current_not_padded() {
-        let results = vec![LineResult::Value(42.0), LineResult::Value(100.0)];
-        let current_row = 0;
-        let panel_width = 20;
-        let memory_pane_left = false;
-
-        let output = build_visible_result_lines_with_highlight(
-            &results,
-            0,
-            10,
-            current_row,
-            panel_width,
-            memory_pane_left,
-        );
-
-        // The second line (not current row) should NOT be padded
-        let second_line = &output[1];
-        let total_content_len: usize = second_line
-            .spans
-            .iter()
-            .map(|span| span.content.len())
-            .sum();
-        // "100" is 3 chars, should not be padded to 20
-        assert!(
-            total_content_len < panel_width,
-            "Non-highlighted line should not be padded"
-        );
-    }
-
-    #[test]
-    fn test_build_visible_result_lines_with_highlight_empty_line_padded() {
-        let results = vec![LineResult::Empty];
-        let current_row = 0;
-        let panel_width = 15;
-        let memory_pane_left = false;
-
-        let output = build_visible_result_lines_with_highlight(
-            &results,
-            0,
-            10,
-            current_row,
-            panel_width,
-            memory_pane_left,
-        );
-
-        // Empty line when current should be padded to full width
-        let first_line = &output[0];
-        // Empty lines should still have the REVERSED modifier applied
-        assert!(
-            first_line.style.add_modifier.contains(Modifier::REVERSED),
-            "Empty current line should have REVERSED modifier"
-        );
-    }
-
-    #[test]
-    fn test_build_visible_input_lines_with_highlight_applies_style_to_full_line() {
-        let lines = vec!["5 + 3".to_string(), "10 * 2".to_string()];
-        let results = vec![LineResult::Value(8.0), LineResult::Value(20.0)];
-        let current_row = 0;
-
-        let output = build_visible_input_lines_with_highlight(&lines, &results, 0, 10, current_row);
-
-        // Verify the line style has REVERSED modifier applied
-        // This means the highlight style covers the entire line
-        assert!(
-            output[0].style.add_modifier.contains(Modifier::REVERSED),
-            "Current line should have REVERSED modifier"
-        );
-        // The style should match the current line highlight style
-        let expected_style = current_line_highlight_style();
-        assert_eq!(
-            output[0].style.add_modifier, expected_style.add_modifier,
-            "Line should use the current line highlight modifier"
-        );
-    }
-
-    #[test]
-    fn test_build_visible_input_lines_with_highlight_style_spans_full_width() {
-        // When Line has a style, ratatui applies it to the full line width
-        // We verify the style is set on the Line itself, not individual spans
-        let lines = vec!["x".to_string()];
-        let results = vec![LineResult::Value(1.0)];
-        let current_row = 0;
-
-        let output = build_visible_input_lines_with_highlight(&lines, &results, 0, 10, current_row);
-
-        // The Line's style (not span's style) determines full-width highlight
-        assert!(
-            output[0].style.add_modifier.contains(Modifier::REVERSED),
-            "Line style should have REVERSED modifier for full-width highlight"
-        );
-    }
-
-    #[test]
-    fn test_build_visible_result_lines_with_highlight_with_large_panel_width() {
-        let results = vec![LineResult::Value(1.0)];
-        let current_row = 0;
-        let panel_width = 100;
-        let memory_pane_left = false;
-
-        let output = build_visible_result_lines_with_highlight(
-            &results,
-            0,
-            10,
-            current_row,
-            panel_width,
-            memory_pane_left,
-        );
-
-        let first_line = &output[0];
-        let total_content_len: usize = first_line.spans.iter().map(|span| span.content.len()).sum();
-        assert_eq!(
-            total_content_len, panel_width,
-            "Line should be padded to full large panel width"
-        );
-    }
-
-    #[test]
-    fn test_build_visible_result_lines_with_highlight_content_equals_panel_width() {
-        // Edge case: content is exactly panel width, no padding needed
-        let results = vec![LineResult::Value(12345.0)];
-        let current_row = 0;
-        let panel_width = 5; // "12345" is exactly 5 chars
-        let memory_pane_left = false;
-
-        let output = build_visible_result_lines_with_highlight(
-            &results,
-            0,
-            10,
-            current_row,
-            panel_width,
-            memory_pane_left,
-        );
-
-        let first_line = &output[0];
-        let total_content_len: usize = first_line.spans.iter().map(|span| span.content.len()).sum();
-        assert_eq!(
-            total_content_len, panel_width,
-            "When content equals panel width, total should still equal panel width"
-        );
-    }
 
     #[test]
     fn test_build_visible_result_lines_right_aligned_when_pane_left() {
         let results = vec![LineResult::Value(42.0)]; // "42" is 2 chars
-        let current_row = 0;
         let panel_width = 10;
         let memory_pane_left = true;
 
-        let output = build_visible_result_lines_with_highlight(
-            &results,
-            0,
-            10,
-            current_row,
-            panel_width,
-            memory_pane_left,
-        );
+        let output = build_visible_result_lines(&results, 0, 10, panel_width, memory_pane_left);
 
         // Content should be right-aligned: 8 spaces + "42"
         let first_line = &output[0];

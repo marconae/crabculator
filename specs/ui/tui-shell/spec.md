@@ -71,13 +71,6 @@ The TUI shell operates within a terminal environment using ratatui and crossterm
 * *THEN* the calculator pane SHALL NOT have any side borders
 * *AND* the calculator pane SHALL have a rusty-red underline below the title
 
-### Scenario: Current line uses reverse video highlight
-
-* *GIVEN* the editor contains multiple lines
-* *WHEN* cursor is on a line
-* *THEN* that line SHALL be displayed with reverse video styling (foreground/background swapped)
-* *AND* the corresponding result line in the memory pane SHALL also use reverse video
-
 ### Scenario: Command bar keyboard shortcuts use bold styling
 
 * *GIVEN* the application is displaying its layout
@@ -115,18 +108,6 @@ The TUI shell operates within a terminal environment using ratatui and crossterm
 * *AND* it SHALL display "CTRL+R: clear"
 * *AND* it SHALL display "CTRL+H: help"
 * *AND* it SHALL display "arrow-up/arrow-down: history"
-
-### Scenario: Editor pane highlights current line full-width
-
-* *GIVEN* the editor contains multiple lines
-* *WHEN* cursor is on a line in the editor
-* *THEN* that line's background highlight SHALL extend to the full panel width
-
-### Scenario: Results pane highlights corresponding line full-width
-
-* *GIVEN* the editor contains multiple lines with results
-* *WHEN* cursor is on a line in the editor
-* *THEN* the corresponding results line's background highlight SHALL extend to the full panel width
 
 ### Scenario: Editor pane scrolls on overflow
 

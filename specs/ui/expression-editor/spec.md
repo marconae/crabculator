@@ -101,6 +101,7 @@ The expression editor operates within a TUI terminal environment as the primary 
 * *WHEN* the editor panel is rendered
 * *THEN* a cursor indicator SHALL be shown at the current cursor position
 * *AND* the cursor SHALL be visually distinct (e.g., block or line cursor)
+* *AND* the cursor cell SHALL use a style that contrasts with the current line highlight
 
 ### Scenario: Line numbers render for all lines
 
