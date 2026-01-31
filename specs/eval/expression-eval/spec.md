@@ -123,18 +123,6 @@ The expression evaluator is the computational core of Crabculator. It processes 
 * *WHEN* an expression uses a function with an invalid argument (e.g., `sqrt(-1)`, `log(0)`)
 * *THEN* the system SHALL return an appropriate error or NaN value
 
-### Scenario: Use pi constant
-
-* *GIVEN* the user has entered an expression
-* *WHEN* an expression references `pi`
-* *THEN* the system SHALL substitute the value 3.141592653589793
-
-### Scenario: Use e constant
-
-* *GIVEN* the user has entered an expression
-* *WHEN* an expression references `e`
-* *THEN* the system SHALL substitute the value 2.718281828459045
-
 ### Scenario: Basic math functions
 
 * *GIVEN* the user calls a basic math function
