@@ -29,19 +29,14 @@ pub enum ParsedLine {
 pub fn parse_line(line: &str) -> ParsedLine {
     let trimmed = line.trim();
 
-    // Empty line check
     if trimmed.is_empty() {
         return ParsedLine::Empty;
     }
 
-    // Try to parse as assignment
-    // An assignment has the form: identifier = expression
-    // We need to be careful about operators like ==, <=, >=, !=
     if let Some(assignment) = try_parse_assignment(trimmed) {
         return assignment;
     }
 
-    // Otherwise, it's a standalone expression
     ParsedLine::Expression(trimmed.to_string())
 }
 
@@ -49,17 +44,14 @@ pub fn parse_line(line: &str) -> ParsedLine {
 ///
 /// Returns `None` if the line is not a valid assignment.
 fn try_parse_assignment(line: &str) -> Option<ParsedLine> {
-    // Find the first '=' that's not part of ==, !=, <=, >=
     let mut chars = line.char_indices().peekable();
     let mut equals_pos = None;
 
     while let Some((i, c)) = chars.next() {
         if c == '=' {
-            // Check if this is part of a comparison operator
             let prev_char = if i > 0 { line.chars().nth(i - 1) } else { None };
             let next_char = chars.peek().map(|(_, c)| *c);
 
-            // Skip if part of ==, !=, <=, >=
             let is_comparison =
                 matches!(prev_char, Some('!' | '<' | '>' | '=')) || matches!(next_char, Some('='));
 
@@ -72,16 +64,13 @@ fn try_parse_assignment(line: &str) -> Option<ParsedLine> {
 
     let equals_pos = equals_pos?;
 
-    // Extract the potential variable name (everything before '=')
     let name_part = line[..equals_pos].trim();
     let expr_part = line[equals_pos + 1..].trim();
 
-    // Validate that the name is a valid identifier
     if !is_valid_identifier(name_part) {
         return None;
     }
 
-    // The expression part must not be empty
     if expr_part.is_empty() {
         return None;
     }

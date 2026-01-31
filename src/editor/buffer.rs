@@ -48,7 +48,7 @@ impl Buffer {
 
     /// Returns the number of lines in the buffer.
     #[must_use]
-    #[allow(clippy::missing_const_for_fn)] // Vec::len() is not const
+    #[allow(clippy::missing_const_for_fn)]
     pub fn line_count(&self) -> usize {
         self.lines.len()
     }
@@ -86,13 +86,10 @@ impl Buffer {
         let row = self.cursor.row();
         let col = self.cursor.col();
 
-        // Split the current line at the cursor position
         let remaining = self.lines[row].split_off(col);
 
-        // Insert the remaining text as a new line
         self.lines.insert(row + 1, remaining);
 
-        // Move cursor to start of new line
         self.cursor.set_row(row + 1);
         self.cursor.set_col(0);
     }
@@ -106,12 +103,10 @@ impl Buffer {
         let col = self.cursor.col();
 
         if col > 0 {
-            // Delete character before cursor within the line
             self.lines[row].remove(col - 1);
             self.cursor.set_col(col - 1);
             true
         } else if row > 0 {
-            // Merge current line with previous line
             let current_line = self.lines.remove(row);
             let prev_line_len = self.lines[row - 1].len();
             self.lines[row - 1].push_str(&current_line);
@@ -133,11 +128,9 @@ impl Buffer {
         let line_len = self.lines[row].len();
 
         if col < line_len {
-            // Delete character at cursor position
             self.lines[row].remove(col);
             true
         } else if row + 1 < self.lines.len() {
-            // Merge next line with current line
             let next_line = self.lines.remove(row + 1);
             self.lines[row].push_str(&next_line);
             true
@@ -225,8 +218,6 @@ impl Default for Buffer {
 mod tests {
     use super::*;
 
-    // === Initial State Tests ===
-
     #[test]
     fn test_buffer_new_has_one_empty_line() {
         let buffer = Buffer::new();
@@ -247,8 +238,6 @@ mod tests {
         let buffer2 = Buffer::default();
         assert_eq!(buffer1, buffer2);
     }
-
-    // === Character Insertion Tests ===
 
     #[test]
     fn test_insert_char_at_start() {
@@ -277,8 +266,6 @@ mod tests {
         assert_eq!(buffer.lines()[0], "abc");
         assert_eq!(buffer.cursor().col(), 2);
     }
-
-    // === New Line Creation Tests ===
 
     #[test]
     fn test_insert_newline_at_end() {
@@ -320,8 +307,6 @@ mod tests {
         assert_eq!(buffer.lines()[1], "ab");
     }
 
-    // === Backspace Deletion Tests ===
-
     #[test]
     fn test_delete_char_before_in_middle() {
         let mut buffer = Buffer::new();
@@ -356,8 +341,6 @@ mod tests {
         assert_eq!(buffer.lines()[0], "a");
     }
 
-    // === Delete Key Tests ===
-
     #[test]
     fn test_delete_char_at_cursor() {
         let mut buffer = Buffer::new();
@@ -389,8 +372,6 @@ mod tests {
         assert!(!buffer.delete_char_at());
         assert_eq!(buffer.lines()[0], "a");
     }
-
-    // === Cursor Left Movement Tests ===
 
     #[test]
     fn test_move_cursor_left_within_line() {
@@ -424,8 +405,6 @@ mod tests {
         assert_eq!(buffer.cursor().col(), 0);
     }
 
-    // === Cursor Right Movement Tests ===
-
     #[test]
     fn test_move_cursor_right_within_line() {
         let mut buffer = Buffer::new();
@@ -457,8 +436,6 @@ mod tests {
         assert_eq!(buffer.cursor().col(), 1);
     }
 
-    // === Cursor Up Movement Tests ===
-
     #[test]
     fn test_move_cursor_up() {
         let mut buffer = Buffer::new();
@@ -489,8 +466,6 @@ mod tests {
         buffer.move_cursor_up();
         assert_eq!(buffer.cursor().row(), 0);
     }
-
-    // === Cursor Down Movement Tests ===
 
     #[test]
     fn test_move_cursor_down() {
@@ -526,8 +501,6 @@ mod tests {
         assert_eq!(buffer.cursor().row(), 0);
     }
 
-    // === Home/End Movement Tests ===
-
     #[test]
     fn test_move_cursor_to_line_start() {
         let mut buffer = Buffer::new();
@@ -548,8 +521,6 @@ mod tests {
         buffer.move_cursor_to_line_end();
         assert_eq!(buffer.cursor().col(), 3);
     }
-
-    // === Content Retrieval Tests ===
 
     #[test]
     fn test_content_single_line() {
@@ -578,8 +549,6 @@ mod tests {
         buffer.move_cursor_up();
         assert_eq!(buffer.current_line(), "a");
     }
-
-    // === from_lines Tests ===
 
     #[test]
     fn test_from_lines_with_content() {
@@ -611,8 +580,6 @@ mod tests {
         assert_eq!(buffer.line_count(), 1);
         assert_eq!(buffer.lines()[0], "single");
     }
-
-    // === Clear Tests ===
 
     #[test]
     fn test_clear_resets_to_single_empty_line() {

@@ -34,34 +34,27 @@ use ratatui::Frame;
 /// * `frame` - The ratatui Frame to render to
 /// * `app` - Mutable reference to the application state
 pub fn render(frame: &mut Frame, app: &mut App) {
-    // Create main layout (content area + command bar)
     let areas = create_main_layout(frame.area());
 
-    // Split content area into input and results panels (80/20)
     let panels = create_panel_layout(app.memory_pane_left).split(areas.content_area);
 
-    // Determine which panel index is input and which is memory based on pane position
     let (input_panel_idx, memory_panel_idx) = if app.memory_pane_left {
         (1, 0) // Input on right, memory on left
     } else {
         (0, 1) // Input on left, memory on right
     };
 
-    // Calculate visible dimensions (area minus borders)
     let visible_height = panels[input_panel_idx].height.saturating_sub(2) as usize;
     let visible_width = panels[input_panel_idx].width.saturating_sub(2) as usize;
 
-    // Adjust scroll offsets to keep cursor visible
     app.adjust_scroll(visible_height);
     app.adjust_horizontal_scroll(visible_width);
 
-    // Evaluate all lines using app's context so variables are persisted
     let results = evaluate_all_lines_with_context(
         app.buffer.lines().iter().map(String::as_str),
         &mut app.context,
     );
 
-    // Render input panel with buffer content and error highlighting
     render_input_panel(
         frame,
         panels[input_panel_idx],
@@ -71,7 +64,6 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         app.last_edit_time,
     );
 
-    // Render result panel with evaluation results
     render_result_panel(
         frame,
         panels[memory_panel_idx],
@@ -80,10 +72,8 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         app.memory_pane_left,
     );
 
-    // Render command bar at the bottom
     render_command_bar(frame, areas.command_bar);
 
-    // Render help overlay if visible (on top of everything)
     if app.help_visible {
         render_help_overlay(frame, frame.area(), app.help_scroll_offset);
     }
@@ -99,7 +89,6 @@ mod tests {
         let area = Rect::new(0, 0, 100, 50);
         let areas = create_main_layout(area);
 
-        // Main layout should have content area and command bar (2 rows: separator + text)
         assert_eq!(areas.content_area.height, 48);
         assert_eq!(areas.command_bar.height, 2);
     }

@@ -31,6 +31,8 @@ pub enum Expr {
     },
     /// Unary negation.
     UnaryMinus(Box<Self>),
+    /// Postfix factorial.
+    Factorial(Box<Self>),
     /// A function call with arguments.
     FunctionCall { name: String, args: Vec<Self> },
 }
@@ -75,11 +77,15 @@ impl std::error::Error for ParseError {}
 /// Grammar (precedence from low to high):
 /// ```text
 /// expr       -> term (('+' | '-') term)*
-/// term       -> power (('*' | '/' | '%') power)*
+/// term       -> power (('*' | '/' | '%' | implicit_mul) power)*
 /// power      -> unary ('^' power)?     // right-associative via recursion
-/// unary      -> '-' unary | primary
+/// unary      -> '-' unary | postfix
+/// postfix    -> primary ('!')*
 /// primary    -> NUMBER | IDENTIFIER | IDENTIFIER '(' args ')' | '(' expr ')'
 /// args       -> expr (',' expr)* | empty
+///
+/// implicit_mul: inserted between adjacent tokens when prev is
+///   Number|RParen|Exclaim and next is Number|Identifier|LParen
 /// ```
 pub struct Parser {
     tokens: Vec<Spanned<Token>>,
@@ -131,17 +137,28 @@ impl Parser {
         Ok(left)
     }
 
-    // Parse multiplication, division, modulo
+    // Parse multiplication, division, modulo (including implicit multiplication)
     fn parse_term(&mut self) -> Result<Expr, ParseError> {
         let mut left = self.parse_power()?;
 
-        while let Some(op) = self.match_multiplicative_op() {
-            let right = self.parse_power()?;
-            left = Expr::BinaryOp {
-                left: Box::new(left),
-                op,
-                right: Box::new(right),
-            };
+        loop {
+            if let Some(op) = self.match_multiplicative_op() {
+                let right = self.parse_power()?;
+                left = Expr::BinaryOp {
+                    left: Box::new(left),
+                    op,
+                    right: Box::new(right),
+                };
+            } else if self.should_implicit_multiply() {
+                let right = self.parse_power()?;
+                left = Expr::BinaryOp {
+                    left: Box::new(left),
+                    op: BinaryOp::Mul,
+                    right: Box::new(right),
+                };
+            } else {
+                break;
+            }
         }
 
         Ok(left)
@@ -170,8 +187,17 @@ impl Parser {
             let operand = self.parse_unary()?;
             Ok(Expr::UnaryMinus(Box::new(operand)))
         } else {
-            self.parse_primary()
+            self.parse_postfix()
         }
+    }
+
+    // Parse postfix factorial operator (!)
+    fn parse_postfix(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_primary()?;
+        while self.match_token(&Token::Exclaim) {
+            expr = Expr::Factorial(Box::new(expr));
+        }
+        Ok(expr)
     }
 
     // Parse primary expressions: numbers, variables, function calls, parentheses
@@ -305,25 +331,41 @@ impl Parser {
             _ => None,
         }
     }
+
+    /// Returns true when the parser should insert an implicit multiplication.
+    ///
+    /// Implicit `*` is inserted between adjacent tokens only in these cases:
+    /// - `Number` followed by `Identifier` or `LParen`
+    /// - `RParen` followed by `Identifier` or `LParen`
+    /// - `Exclaim` (factorial) followed by `Identifier` or `LParen`
+    fn should_implicit_multiply(&self) -> bool {
+        if self.pos == 0 || self.is_at_end() {
+            return false;
+        }
+        let (prev_token, _) = &self.tokens[self.pos - 1];
+        let (next_token, _) = &self.tokens[self.pos];
+
+        let left_ok = matches!(
+            prev_token,
+            Token::Number(_) | Token::RParen | Token::Exclaim
+        );
+        let right_ok = matches!(next_token, Token::Identifier(_) | Token::LParen);
+
+        left_ok && right_ok
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Helper to create a spanned token at a position
     fn spanned(token: Token, start: usize, end: usize) -> Spanned<Token> {
         (token, Span { start, end })
     }
 
-    // Helper to create tokens without worrying about spans
     fn tok(token: Token) -> Spanned<Token> {
         spanned(token, 0, 0)
     }
-
-    // ============================================================
-    // Tests for parsing simple numbers
-    // ============================================================
 
     #[test]
     fn test_parse_integer() {
@@ -355,10 +397,6 @@ mod tests {
             Expr::UnaryMinus(Box::new(Expr::Number(5.0)))
         );
     }
-
-    // ============================================================
-    // Tests for parsing binary operations with correct precedence
-    // ============================================================
 
     #[test]
     fn test_parse_simple_addition() {
@@ -573,10 +611,6 @@ mod tests {
         );
     }
 
-    // ============================================================
-    // Tests for right-associative power operator
-    // ============================================================
-
     #[test]
     fn test_parse_simple_power() {
         // 2 ^ 3
@@ -651,10 +685,6 @@ mod tests {
             }
         );
     }
-
-    // ============================================================
-    // Tests for unary minus
-    // ============================================================
 
     #[test]
     fn test_parse_unary_minus() {
@@ -733,10 +763,6 @@ mod tests {
         );
     }
 
-    // ============================================================
-    // Tests for parentheses
-    // ============================================================
-
     #[test]
     fn test_parse_parentheses_simple() {
         // (5)
@@ -805,10 +831,6 @@ mod tests {
         );
     }
 
-    // ============================================================
-    // Tests for variables
-    // ============================================================
-
     #[test]
     fn test_parse_variable() {
         // x
@@ -839,10 +861,6 @@ mod tests {
             }
         );
     }
-
-    // ============================================================
-    // Tests for function calls
-    // ============================================================
 
     #[test]
     fn test_parse_function_call_no_args() {
@@ -992,10 +1010,6 @@ mod tests {
         );
     }
 
-    // ============================================================
-    // Tests for error cases
-    // ============================================================
-
     #[test]
     fn test_parse_error_empty_input() {
         let tokens: Vec<Spanned<Token>> = vec![];
@@ -1101,10 +1115,6 @@ mod tests {
         assert!(result.unwrap_err().message.contains("Unexpected token"));
     }
 
-    // ============================================================
-    // Tests for complex expressions
-    // ============================================================
-
     #[test]
     fn test_parse_complex_expression() {
         // 2 ^ (a + 5) * 3
@@ -1136,6 +1146,309 @@ mod tests {
                         right: Box::new(Expr::Number(5.0)),
                     }),
                 }),
+                op: BinaryOp::Mul,
+                right: Box::new(Expr::Number(3.0)),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_factorial_simple() {
+        // 5!
+        let tokens = vec![tok(Token::Number(5.0)), tok(Token::Exclaim)];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::Factorial(Box::new(Expr::Number(5.0)))
+        );
+    }
+
+    #[test]
+    fn test_parse_factorial_precedence_over_power() {
+        // 3!^2 = (3!)^2
+        let tokens = vec![
+            tok(Token::Number(3.0)),
+            tok(Token::Exclaim),
+            tok(Token::Caret),
+            tok(Token::Number(2.0)),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::BinaryOp {
+                left: Box::new(Expr::Factorial(Box::new(Expr::Number(3.0)))),
+                op: BinaryOp::Pow,
+                right: Box::new(Expr::Number(2.0)),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_factorial_with_multiplication() {
+        // 2*4! = 2*(4!)
+        let tokens = vec![
+            tok(Token::Number(2.0)),
+            tok(Token::Star),
+            tok(Token::Number(4.0)),
+            tok(Token::Exclaim),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::BinaryOp {
+                left: Box::new(Expr::Number(2.0)),
+                op: BinaryOp::Mul,
+                right: Box::new(Expr::Factorial(Box::new(Expr::Number(4.0)))),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_factorial_of_parenthesized_expr() {
+        // (3+2)!
+        let tokens = vec![
+            tok(Token::LParen),
+            tok(Token::Number(3.0)),
+            tok(Token::Plus),
+            tok(Token::Number(2.0)),
+            tok(Token::RParen),
+            tok(Token::Exclaim),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::Factorial(Box::new(Expr::BinaryOp {
+                left: Box::new(Expr::Number(3.0)),
+                op: BinaryOp::Add,
+                right: Box::new(Expr::Number(2.0)),
+            }))
+        );
+    }
+
+    #[test]
+    fn test_parse_implicit_mult_number_identifier() {
+        // 2pi => 2 * pi
+        let tokens = vec![
+            tok(Token::Number(2.0)),
+            tok(Token::Identifier("pi".to_string())),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::BinaryOp {
+                left: Box::new(Expr::Number(2.0)),
+                op: BinaryOp::Mul,
+                right: Box::new(Expr::Variable("pi".to_string())),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_implicit_mult_number_lparen() {
+        // 3(4+5) => 3 * (4+5)
+        let tokens = vec![
+            tok(Token::Number(3.0)),
+            tok(Token::LParen),
+            tok(Token::Number(4.0)),
+            tok(Token::Plus),
+            tok(Token::Number(5.0)),
+            tok(Token::RParen),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::BinaryOp {
+                left: Box::new(Expr::Number(3.0)),
+                op: BinaryOp::Mul,
+                right: Box::new(Expr::BinaryOp {
+                    left: Box::new(Expr::Number(4.0)),
+                    op: BinaryOp::Add,
+                    right: Box::new(Expr::Number(5.0)),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_implicit_mult_rparen_lparen() {
+        // (2+3)(4+5) => (2+3) * (4+5)
+        let tokens = vec![
+            tok(Token::LParen),
+            tok(Token::Number(2.0)),
+            tok(Token::Plus),
+            tok(Token::Number(3.0)),
+            tok(Token::RParen),
+            tok(Token::LParen),
+            tok(Token::Number(4.0)),
+            tok(Token::Plus),
+            tok(Token::Number(5.0)),
+            tok(Token::RParen),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::BinaryOp {
+                left: Box::new(Expr::BinaryOp {
+                    left: Box::new(Expr::Number(2.0)),
+                    op: BinaryOp::Add,
+                    right: Box::new(Expr::Number(3.0)),
+                }),
+                op: BinaryOp::Mul,
+                right: Box::new(Expr::BinaryOp {
+                    left: Box::new(Expr::Number(4.0)),
+                    op: BinaryOp::Add,
+                    right: Box::new(Expr::Number(5.0)),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_implicit_mult_rparen_identifier() {
+        // (2+3)pi => (2+3) * pi
+        let tokens = vec![
+            tok(Token::LParen),
+            tok(Token::Number(2.0)),
+            tok(Token::Plus),
+            tok(Token::Number(3.0)),
+            tok(Token::RParen),
+            tok(Token::Identifier("pi".to_string())),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::BinaryOp {
+                left: Box::new(Expr::BinaryOp {
+                    left: Box::new(Expr::Number(2.0)),
+                    op: BinaryOp::Add,
+                    right: Box::new(Expr::Number(3.0)),
+                }),
+                op: BinaryOp::Mul,
+                right: Box::new(Expr::Variable("pi".to_string())),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_implicit_mult_does_not_affect_function_calls() {
+        // sqrt(9) should NOT be implicit mult
+        let tokens = vec![
+            tok(Token::Identifier("sqrt".to_string())),
+            tok(Token::LParen),
+            tok(Token::Number(9.0)),
+            tok(Token::RParen),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::FunctionCall {
+                name: "sqrt".to_string(),
+                args: vec![Expr::Number(9.0)],
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_implicit_mult_number_function_call() {
+        // 2sqrt(9) => 2 * sqrt(9)
+        let tokens = vec![
+            tok(Token::Number(2.0)),
+            tok(Token::Identifier("sqrt".to_string())),
+            tok(Token::LParen),
+            tok(Token::Number(9.0)),
+            tok(Token::RParen),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::BinaryOp {
+                left: Box::new(Expr::Number(2.0)),
+                op: BinaryOp::Mul,
+                right: Box::new(Expr::FunctionCall {
+                    name: "sqrt".to_string(),
+                    args: vec![Expr::Number(9.0)],
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_implicit_mult_precedence_with_power() {
+        // 2pi^2 => 2 * (pi^2) (implicit mult has same precedence as *)
+        let tokens = vec![
+            tok(Token::Number(2.0)),
+            tok(Token::Identifier("pi".to_string())),
+            tok(Token::Caret),
+            tok(Token::Number(2.0)),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::BinaryOp {
+                left: Box::new(Expr::Number(2.0)),
+                op: BinaryOp::Mul,
+                right: Box::new(Expr::BinaryOp {
+                    left: Box::new(Expr::Variable("pi".to_string())),
+                    op: BinaryOp::Pow,
+                    right: Box::new(Expr::Number(2.0)),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_no_implicit_mult_identifier_identifier() {
+        // x y should NOT be implicit mult - should fail parsing (extra token y)
+        let tokens = vec![
+            tok(Token::Identifier("x".to_string())),
+            tok(Token::Identifier("y".to_string())),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        // This should be a parse error (unexpected token y)
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_implicit_mult_factorial_lparen() {
+        // 5!(3) => 5! * 3
+        let tokens = vec![
+            tok(Token::Number(5.0)),
+            tok(Token::Exclaim),
+            tok(Token::LParen),
+            tok(Token::Number(3.0)),
+            tok(Token::RParen),
+        ];
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse();
+
+        assert_eq!(
+            result.unwrap(),
+            Expr::BinaryOp {
+                left: Box::new(Expr::Factorial(Box::new(Expr::Number(5.0)))),
                 op: BinaryOp::Mul,
                 right: Box::new(Expr::Number(3.0)),
             }

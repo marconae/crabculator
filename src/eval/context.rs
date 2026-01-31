@@ -143,8 +143,6 @@ mod tests {
         assert!(context.get_variable("x").is_none());
     }
 
-    // === extract_variables Tests ===
-
     #[test]
     fn test_extract_variables_new_context_contains_constants() {
         let context = EvalContext::new();
@@ -188,8 +186,6 @@ mod tests {
         assert!((vars.get("float_val").unwrap() - 20.5).abs() < 0.0001);
     }
 
-    // === load_variables Tests ===
-
     #[test]
     fn test_load_variables_empty_map_preserves_constants() {
         let mut context = EvalContext::new();
@@ -228,8 +224,6 @@ mod tests {
         let extracted2 = context2.extract_variables();
         assert_eq!(extracted, extracted2);
     }
-
-    // === Mathematical Constants Tests ===
 
     #[test]
     fn test_new_context_has_pi_constant() {

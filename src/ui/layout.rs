@@ -68,8 +68,6 @@ pub fn create_panel_layout(memory_pane_left: bool) -> Layout {
 mod tests {
     use super::*;
 
-    // === Main Layout Tests (Vertical: content area + command bar) ===
-
     #[test]
     fn main_layout_creates_two_areas() {
         let area = Rect::new(0, 0, 100, 50);
@@ -132,8 +130,6 @@ mod tests {
         assert_eq!(areas.command_bar.x, 0, "Command bar should start at x=0");
     }
 
-    // === Panel Layout Tests (Horizontal: input + results) ===
-
     #[test]
     fn panel_layout_creates_two_chunks() {
         let layout = create_panel_layout(false);
@@ -190,8 +186,6 @@ mod tests {
         // Right panel should start after left panel
         assert_eq!(chunks[1].x, 80, "Right panel should start at x=80");
     }
-
-    // === Layout adapts to terminal resize ===
 
     #[test]
     fn layout_adapts_to_terminal_resize() {

@@ -47,26 +47,6 @@ mod tests {
     }
 
     #[test]
-    fn state_dir_ends_with_dot_crabculator() {
-        let dir = state_dir().expect("state_dir should return Some");
-        assert!(
-            dir.ends_with(".crabculator"),
-            "state_dir should end with .crabculator, got: {dir:?}",
-        );
-    }
-
-    #[test]
-    fn state_dir_is_under_home_directory() {
-        let dir = state_dir().expect("state_dir should return Some");
-        let home = dirs::home_dir().expect("home_dir should be available");
-
-        assert!(
-            dir.starts_with(&home),
-            "state_dir {dir:?} should be under home {home:?}",
-        );
-    }
-
-    #[test]
     fn state_dir_is_absolute_path() {
         let dir = state_dir().expect("state_dir should return Some");
         assert!(
@@ -97,26 +77,6 @@ mod tests {
     }
 
     #[test]
-    fn state_file_ends_with_state_txt() {
-        let file = state_file().expect("state_file should return Some");
-        assert!(
-            file.ends_with("state.txt"),
-            "state_file should end with state.txt, got: {file:?}",
-        );
-    }
-
-    #[test]
-    fn state_file_is_inside_state_dir() {
-        let dir = state_dir().expect("state_dir should return Some");
-        let file = state_file().expect("state_file should return Some");
-
-        assert!(
-            file.starts_with(&dir),
-            "state_file {file:?} should be inside state_dir {dir:?}",
-        );
-    }
-
-    #[test]
     fn state_file_parent_is_state_dir() {
         let dir = state_dir().expect("state_dir should return Some");
         let file = state_file().expect("state_file should return Some");
@@ -142,7 +102,6 @@ mod tests {
         let dir = state_dir().expect("state_dir should return Some");
         let home = dirs::home_dir().expect("home_dir should be available");
 
-        // Verify the exact path is home/.crabculator
         let expected = home.join(".crabculator");
         assert_eq!(dir, expected, "state_dir {dir:?} should equal {expected:?}",);
     }
@@ -152,7 +111,6 @@ mod tests {
         let file = state_file().expect("state_file should return Some");
         let home = dirs::home_dir().expect("home_dir should be available");
 
-        // Verify the exact path is home/.crabculator/state.txt
         let expected = home.join(".crabculator").join("state.txt");
         assert_eq!(
             file, expected,

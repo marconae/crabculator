@@ -52,6 +52,8 @@ pub enum Token {
     Comma,
     /// Equals sign `=`.
     Equals,
+    /// Factorial operator '!'
+    Exclaim,
 }
 
 /// An error that occurred during tokenization.
@@ -202,6 +204,10 @@ impl<'a> Tokenizer<'a> {
                 self.advance();
                 Token::Equals
             }
+            '!' => {
+                self.advance();
+                Token::Exclaim
+            }
             c if c.is_ascii_digit() || c == '.' => self.parse_number()?,
             c if c.is_alphabetic() || c == '_' => self.parse_identifier(),
             _ => {
@@ -216,7 +222,7 @@ impl<'a> Tokenizer<'a> {
         Ok((token, Span::new(start, end)))
     }
 
-    /// Parses a number (integer, float, or scientific notation).
+    /// Parses a number (integer, float, scientific notation, or base-prefix literal).
     fn parse_number(&mut self) -> Result<Token, TokenError> {
         let start = self.position;
         let mut has_dot = false;
@@ -231,6 +237,31 @@ impl<'a> Tokenizer<'a> {
                     "expected digit after decimal point",
                     self.position,
                 ));
+            }
+        }
+
+        // Check for base-prefix literals (0x, 0b, 0o)
+        if !has_dot
+            && self.peek() == Some('0')
+            && let Some(prefix) = self.peek_next()
+        {
+            match prefix {
+                'x' | 'X' => {
+                    self.advance(); // consume '0'
+                    self.advance(); // consume 'x'/'X'
+                    return self.parse_base_digits(16, "hex", start);
+                }
+                'b' | 'B' => {
+                    self.advance(); // consume '0'
+                    self.advance(); // consume 'b'/'B'
+                    return self.parse_base_digits(2, "binary", start);
+                }
+                'o' | 'O' => {
+                    self.advance(); // consume '0'
+                    self.advance(); // consume 'o'/'O'
+                    return self.parse_base_digits(8, "octal", start);
+                }
+                _ => {}
             }
         }
 
@@ -293,6 +324,49 @@ impl<'a> Tokenizer<'a> {
         Ok(Token::Number(value))
     }
 
+    /// Parses digits in a given base after a prefix (e.g., after `0x`).
+    #[allow(clippy::cast_precision_loss)]
+    fn parse_base_digits(
+        &mut self,
+        base: u32,
+        base_name: &str,
+        start: usize,
+    ) -> Result<Token, TokenError> {
+        let digits_start = self.position;
+
+        // Must have at least one valid digit
+        if !self.peek().is_some_and(|c| c.is_digit(base)) {
+            return Err(TokenError::new(
+                format!(
+                    "expected {base_name} digit after '0{}'",
+                    self.input[start + 1..start + 2].chars().next().unwrap()
+                ),
+                self.position,
+            ));
+        }
+
+        // Consume valid digits for the base
+        while let Some(c) = self.peek() {
+            if c.is_digit(base) {
+                self.advance();
+            } else if c.is_alphanumeric() {
+                // Invalid digit for this base (e.g., '2' in 0b12)
+                return Err(TokenError::new(
+                    format!("invalid digit '{c}' in {base_name} literal"),
+                    self.position,
+                ));
+            } else {
+                break;
+            }
+        }
+
+        let digit_str = &self.input[digits_start..self.position];
+        let value = i64::from_str_radix(digit_str, base)
+            .map_err(|_| TokenError::new(format!("invalid {base_name} literal"), start))?;
+
+        Ok(Token::Number(value as f64))
+    }
+
     /// Parses an identifier (variable or function name).
     fn parse_identifier(&mut self) -> Token {
         let start = self.position;
@@ -318,17 +392,12 @@ impl<'a> Tokenizer<'a> {
 mod tests {
     use super::*;
 
-    // Helper function to tokenize and extract just the tokens (without spans)
     fn tokenize(input: &str) -> Result<Vec<Token>, TokenError> {
         let mut tokenizer = Tokenizer::new(input);
         tokenizer
             .tokenize()
             .map(|v| v.into_iter().map(|(t, _)| t).collect())
     }
-
-    // ============================================================
-    // Number tokenization tests
-    // ============================================================
 
     #[test]
     fn test_tokenize_integer() {
@@ -396,10 +465,6 @@ mod tests {
         assert_eq!(tokens, vec![Token::Number(6.022e23)]);
     }
 
-    // ============================================================
-    // Identifier tokenization tests
-    // ============================================================
-
     #[test]
     fn test_tokenize_simple_identifier() {
         let tokens = tokenize("x").unwrap();
@@ -442,10 +507,6 @@ mod tests {
         assert_eq!(tokens, vec![Token::Identifier("camelCase".to_string())]);
     }
 
-    // ============================================================
-    // Operator tokenization tests
-    // ============================================================
-
     #[test]
     fn test_tokenize_plus() {
         let tokens = tokenize("+").unwrap();
@@ -482,10 +543,6 @@ mod tests {
         assert_eq!(tokens, vec![Token::Caret]);
     }
 
-    // ============================================================
-    // Delimiter tokenization tests
-    // ============================================================
-
     #[test]
     fn test_tokenize_lparen() {
         let tokens = tokenize("(").unwrap();
@@ -509,10 +566,6 @@ mod tests {
         let tokens = tokenize("=").unwrap();
         assert_eq!(tokens, vec![Token::Equals]);
     }
-
-    // ============================================================
-    // Mixed expression tokenization tests
-    // ============================================================
 
     #[test]
     fn test_tokenize_simple_addition() {
@@ -688,10 +741,6 @@ mod tests {
         );
     }
 
-    // ============================================================
-    // Whitespace handling tests
-    // ============================================================
-
     #[test]
     fn test_tokenize_empty_string() {
         let tokens = tokenize("").unwrap();
@@ -733,10 +782,6 @@ mod tests {
         let tokens = tokenize("42   ").unwrap();
         assert_eq!(tokens, vec![Token::Number(42.0)]);
     }
-
-    // ============================================================
-    // Span tracking tests
-    // ============================================================
 
     #[test]
     fn test_span_single_digit() {
@@ -780,10 +825,6 @@ mod tests {
         assert_eq!(tokens[0].1, Span::new(0, 4));
     }
 
-    // ============================================================
-    // Error case tests
-    // ============================================================
-
     #[test]
     fn test_error_invalid_character() {
         let result = tokenize("2 @ 3");
@@ -824,10 +865,6 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.message.contains("exponent"));
     }
-
-    // ============================================================
-    // Edge case tests
-    // ============================================================
 
     #[test]
     fn test_tokenize_multiple_operators() {
@@ -881,5 +918,132 @@ mod tests {
         // "e" alone should be an identifier, not scientific notation
         let tokens = tokenize("e").unwrap();
         assert_eq!(tokens, vec![Token::Identifier("e".to_string())]);
+    }
+
+    #[test]
+    fn test_tokenize_hex_literal() {
+        let tokens = tokenize("0xff").unwrap();
+        assert_eq!(tokens, vec![Token::Number(255.0)]);
+    }
+
+    #[test]
+    fn test_tokenize_hex_literal_uppercase_prefix() {
+        let tokens = tokenize("0Xff").unwrap();
+        assert_eq!(tokens, vec![Token::Number(255.0)]);
+    }
+
+    #[test]
+    fn test_tokenize_hex_literal_uppercase_digits() {
+        let tokens = tokenize("0xABCD").unwrap();
+        assert_eq!(tokens, vec![Token::Number(0xABCD as f64)]);
+    }
+
+    #[test]
+    fn test_tokenize_binary_literal() {
+        let tokens = tokenize("0b1010").unwrap();
+        assert_eq!(tokens, vec![Token::Number(10.0)]);
+    }
+
+    #[test]
+    fn test_tokenize_binary_literal_uppercase_prefix() {
+        let tokens = tokenize("0B1100").unwrap();
+        assert_eq!(tokens, vec![Token::Number(12.0)]);
+    }
+
+    #[test]
+    fn test_tokenize_octal_literal() {
+        let tokens = tokenize("0o77").unwrap();
+        assert_eq!(tokens, vec![Token::Number(63.0)]);
+    }
+
+    #[test]
+    fn test_tokenize_octal_literal_uppercase_prefix() {
+        let tokens = tokenize("0O10").unwrap();
+        assert_eq!(tokens, vec![Token::Number(8.0)]);
+    }
+
+    #[test]
+    fn test_tokenize_hex_no_digits_error() {
+        let result = tokenize("0x");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("expected hex digit"));
+    }
+
+    #[test]
+    fn test_tokenize_binary_no_digits_error() {
+        let result = tokenize("0b");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("expected binary digit"));
+    }
+
+    #[test]
+    fn test_tokenize_octal_no_digits_error() {
+        let result = tokenize("0o");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("expected octal digit"));
+    }
+
+    #[test]
+    fn test_tokenize_binary_invalid_digit_error() {
+        let result = tokenize("0b123");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("invalid digit"));
+    }
+
+    #[test]
+    fn test_tokenize_octal_invalid_digit_error() {
+        // 8 is not a valid octal digit, so 0o8 fails immediately
+        let result = tokenize("0o89");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("expected octal digit"));
+    }
+
+    #[test]
+    fn test_tokenize_octal_invalid_digit_after_valid() {
+        // 7 is valid octal, but 8 is not
+        let result = tokenize("0o78");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("invalid digit"));
+    }
+
+    #[test]
+    fn test_tokenize_hex_zero() {
+        let tokens = tokenize("0x0").unwrap();
+        assert_eq!(tokens, vec![Token::Number(0.0)]);
+    }
+
+    #[test]
+    fn test_tokenize_hex_in_expression() {
+        let tokens = tokenize("0xff + 1").unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::Number(255.0), Token::Plus, Token::Number(1.0)]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_exclaim() {
+        let tokens = tokenize("5!").unwrap();
+        assert_eq!(tokens, vec![Token::Number(5.0), Token::Exclaim]);
+    }
+
+    #[test]
+    fn test_tokenize_exclaim_in_expression() {
+        let tokens = tokenize("3! + 1").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(3.0),
+                Token::Exclaim,
+                Token::Plus,
+                Token::Number(1.0)
+            ]
+        );
     }
 }

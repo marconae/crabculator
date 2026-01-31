@@ -63,10 +63,8 @@ pub fn save(state: &PersistedState) -> io::Result<()> {
         io::Error::new(ErrorKind::NotFound, "Could not determine state file path")
     })?;
 
-    // Create the directory if it doesn't exist
     fs::create_dir_all(&state_dir)?;
 
-    // Write buffer lines as plain text (one line per buffer line)
     let content = state.buffer_lines.join("\n");
     fs::write(&state_file, content)
 }
@@ -99,22 +97,18 @@ pub fn load() -> io::Result<Option<PersistedState>> {
 ///
 /// Returns an error if the file exists but cannot be read (e.g., permission denied).
 pub fn load_from_path(path: &Path) -> io::Result<Option<PersistedState>> {
-    // Try to read the file
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(e) if e.kind() == ErrorKind::NotFound => {
-            // File doesn't exist - return None (not an error)
             return Ok(None);
         }
         Err(e) if e.kind() == ErrorKind::InvalidData => {
-            // File contains invalid UTF-8 - treat as corrupted
             eprintln!("Warning: State file contains invalid UTF-8, using empty state. Error: {e}");
             return Ok(None);
         }
         Err(e) => return Err(e),
     };
 
-    // Parse plain text: each line is a buffer line
     let buffer_lines: Vec<String> = contents.lines().map(String::from).collect();
     Ok(Some(PersistedState::new(buffer_lines)))
 }
@@ -130,12 +124,10 @@ pub fn load_from_path(path: &Path) -> io::Result<Option<PersistedState>> {
 /// - The parent directory cannot be created
 /// - The file cannot be written
 pub fn save_to_path(state: &PersistedState, path: &Path) -> io::Result<()> {
-    // Create parent directory if it doesn't exist
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
 
-    // Write buffer lines as plain text (one line per buffer line)
     let content = state.buffer_lines.join("\n");
     fs::write(path, content)
 }
@@ -145,8 +137,6 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
-
-    // === PersistedState struct tests ===
 
     #[test]
     fn test_persisted_state_new() {
@@ -169,8 +159,6 @@ mod tests {
 
         assert!(state.buffer_lines.is_empty());
     }
-
-    // === Save function tests ===
 
     #[test]
     fn test_save_to_path_creates_file() {
@@ -223,8 +211,6 @@ mod tests {
         assert_eq!(loaded.buffer_lines, vec!["second"]);
     }
 
-    // === Load function tests ===
-
     #[test]
     fn test_load_from_path_returns_none_when_file_missing() {
         let dir = tempdir().expect("should create temp dir");
@@ -254,14 +240,12 @@ mod tests {
         let dir = tempdir().expect("should create temp dir");
         let file_path = dir.path().join("state.txt");
 
-        // Write empty file
         fs::write(&file_path, "").expect("should write file");
 
         let result = load_from_path(&file_path)
             .expect("load should succeed")
             .expect("should have state");
 
-        // Empty file produces empty buffer lines
         assert!(result.buffer_lines.is_empty());
     }
 
@@ -278,8 +262,6 @@ mod tests {
 
         assert_eq!(result.buffer_lines, vec!["single line"]);
     }
-
-    // === Save and Load roundtrip tests ===
 
     #[test]
     fn test_save_and_load_roundtrip() {
@@ -330,14 +312,11 @@ mod tests {
         assert_eq!(original, loaded);
     }
 
-    // === Graceful handling tests ===
-
     #[test]
     fn test_graceful_handling_missing_file_returns_none() {
         let dir = tempdir().expect("should create temp dir");
         let file_path = dir.path().join("does_not_exist.txt");
 
-        // Should return Ok(None), not an error
         let result = load_from_path(&file_path);
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
@@ -348,10 +327,8 @@ mod tests {
         let dir = tempdir().expect("should create temp dir");
         let file_path = dir.path().join("garbage.txt");
 
-        // Write binary garbage (invalid UTF-8)
         fs::write(&file_path, [0x00, 0xFF, 0xFE, 0x89]).expect("should write file");
 
-        // Should return Ok(None), not crash
         let result = load_from_path(&file_path);
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());

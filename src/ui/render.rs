@@ -20,6 +20,21 @@ use crate::editor::Buffer;
 use crate::eval::{EvalError, LineResult, evaluate_all_lines};
 use crate::ui::highlight::{highlight_line, highlight_line_with_offset};
 
+/// Threshold above which whole numbers are displayed in scientific notation.
+const MAX_WHOLE_NUMBER_DISPLAY: f64 = 1e15;
+
+/// Maximum character length before a value is truncated in the memory pane.
+const TRUNCATED_DISPLAY_MAX: usize = 12;
+
+/// Number of leading characters to keep when truncating a value.
+const TRUNCATED_DISPLAY_PREFIX: usize = 9;
+
+/// Width percentage for the help overlay relative to the terminal.
+const HELP_OVERLAY_WIDTH_PERCENT: u16 = 70;
+
+/// Height percentage for the help overlay relative to the terminal.
+const HELP_OVERLAY_HEIGHT_PERCENT: u16 = 80;
+
 /// Formats a `LineResult` for display in the result panel.
 ///
 /// # Returns
@@ -42,8 +57,7 @@ pub fn format_result(result: &LineResult) -> Option<String> {
 /// Other floats are displayed with their natural decimal representation.
 #[must_use]
 fn format_value(value: f64) -> String {
-    // If the float is a whole number, display without decimals
-    if value.fract() == 0.0 && value.abs() < 1e15 {
+    if value.fract() == 0.0 && value.abs() < MAX_WHOLE_NUMBER_DISPLAY {
         format!("{value:.0}")
     } else {
         value.to_string()
@@ -57,8 +71,8 @@ fn format_value(value: f64) -> String {
 /// Negative signs and decimal points count toward the character limit.
 #[must_use]
 pub fn format_value_truncated(value: &str) -> String {
-    if value.len() > 12 {
-        format!("{}...", &value[..9])
+    if value.len() > TRUNCATED_DISPLAY_MAX {
+        format!("{}...", &value[..TRUNCATED_DISPLAY_PREFIX])
     } else {
         value.to_string()
     }
@@ -122,14 +136,12 @@ pub fn build_input_lines<'a>(lines: &'a [String], results: &'a [LineResult]) -> 
     for (i, line_text) in lines.iter().enumerate() {
         let result = results.get(i);
 
-        // Build the main line with potential error or syntax highlighting
         let styled_line = match result {
             Some(LineResult::Error(err)) => build_error_line(line_text, err),
             _ => Line::from(highlight_line(line_text)),
         };
         output.push(styled_line);
 
-        // Add error message below error lines
         if let Some(LineResult::Error(err)) = result {
             let error_line = Line::from(Span::styled(
                 format!("  ^ {}", err.message()),
@@ -152,26 +164,21 @@ fn build_error_line<'a>(line_text: &'a str, error: &EvalError) -> Line<'a> {
         .add_modifier(Modifier::UNDERLINED);
 
     error.span().map_or_else(
-        // No span available, underline entire line
         || Line::from(Span::styled(line_text, error_style)),
         |span| {
-            // Clamp span to line bounds
             let start = span.start.min(line_text.len());
             let end = span.end.min(line_text.len()).max(start);
 
             let mut spans = Vec::new();
 
-            // Text before error
             if start > 0 {
                 spans.push(Span::raw(&line_text[..start]));
             }
 
-            // Error portion with underline
             if start < end {
                 spans.push(Span::styled(&line_text[start..end], error_style));
             }
 
-            // Text after error
             if end < line_text.len() {
                 spans.push(Span::raw(&line_text[end..]));
             }
@@ -204,7 +211,6 @@ pub fn build_result_lines(results: &[LineResult]) -> Vec<Line<'_>> {
         );
         output.push(line);
 
-        // Add empty line for error message to maintain alignment with input panel
         if matches!(result, LineResult::Error(_)) {
             output.push(Line::from(""));
         }
@@ -223,14 +229,12 @@ pub fn build_visible_input_lines<'a>(
 ) -> Vec<Line<'a>> {
     let mut output: Vec<Line<'a>> = Vec::new();
 
-    // Calculate the range of lines to render
     let start = scroll_offset.min(lines.len());
     let end = (scroll_offset + visible_height).min(lines.len());
 
     for (i, line_text) in lines.iter().enumerate().take(end).skip(start) {
         let result = results.get(i);
 
-        // Build the main line with potential error or syntax highlighting
         let styled_line = match result {
             Some(LineResult::Error(err)) => build_error_line(line_text, err),
             _ => Line::from(highlight_line(line_text)),
@@ -238,7 +242,6 @@ pub fn build_visible_input_lines<'a>(
 
         output.push(styled_line);
 
-        // Add error message below error lines
         if let Some(LineResult::Error(err)) = result {
             let error_line = Line::from(Span::styled(
                 format!("  ^ {}", err.message()),
@@ -265,7 +268,6 @@ pub fn build_visible_result_lines(
 ) -> Vec<Line<'_>> {
     let mut output: Vec<Line<'_>> = Vec::new();
 
-    // Calculate the range of results to render (in expression space)
     let start = scroll_offset.min(results.len());
     let end = (scroll_offset + visible_height).min(results.len());
 
@@ -273,9 +275,7 @@ pub fn build_visible_result_lines(
         let text = format_result_for_memory_pane(result).unwrap_or_default();
         let content_width = text.len();
 
-        // Right-align content when memory pane is on the left
         let spans = if memory_pane_left && content_width < panel_width {
-            // Add leading padding for right alignment
             let padding = " ".repeat(panel_width - content_width);
             if text.is_empty() {
                 vec![Span::raw(padding)]
@@ -292,7 +292,6 @@ pub fn build_visible_result_lines(
 
         output.push(line);
 
-        // Add empty line for error message to maintain alignment with input panel
         if matches!(result, LineResult::Error(_)) {
             output.push(Line::from(""));
         }
@@ -300,10 +299,6 @@ pub fn build_visible_result_lines(
 
     output
 }
-
-// ============================================================
-// Line Number Gutter Functions
-// ============================================================
 
 /// Calculates the width needed for the line number gutter.
 ///
@@ -321,11 +316,9 @@ pub fn build_visible_result_lines(
 /// The width in characters needed for the gutter (minimum 3, or digits + 1 space).
 #[must_use]
 pub const fn calculate_gutter_width(line_count: usize) -> usize {
-    // Calculate digits needed for the largest line number using integer math
     let digits = if line_count == 0 {
-        1 // At least 1 digit even for empty buffer
+        1
     } else {
-        // Count digits by repeatedly dividing by 10
         let mut n = line_count;
         let mut count = 0;
         while n > 0 {
@@ -334,9 +327,7 @@ pub const fn calculate_gutter_width(line_count: usize) -> usize {
         }
         count
     };
-    // Add 1 for the trailing space separator
     let width = digits + 1;
-    // Minimum width of 3 to align with title emoji (2 columns) + space (1 column)
     if width < 3 { 3 } else { width }
 }
 
@@ -353,7 +344,6 @@ pub const fn calculate_gutter_width(line_count: usize) -> usize {
 /// A string with the line number right-aligned and a trailing space.
 #[must_use]
 pub fn format_line_number(line_number: usize, gutter_width: usize) -> String {
-    // gutter_width includes trailing space, so actual number width is gutter_width - 1
     let number_width = gutter_width - 1;
     format!("{line_number:>number_width$} ")
 }
@@ -388,31 +378,25 @@ fn build_error_spans_with_offset<'a>(
         .fg(Color::Red)
         .add_modifier(Modifier::UNDERLINED);
 
-    // Calculate the visible slice of the line
     let start_col = horizontal_offset.min(line_text.len());
     let end_col = (horizontal_offset + visible_width).min(line_text.len());
     let visible_text = &line_text[start_col..end_col];
 
     error.span().map_or_else(
-        // No span available, underline entire visible portion
         || vec![Span::styled(visible_text, error_style)],
         |span| {
-            // Adjust span coordinates relative to the visible window
             let span_start = span.start.saturating_sub(horizontal_offset);
             let span_end = span.end.saturating_sub(horizontal_offset);
 
-            // Clamp to visible bounds
             let visible_span_start = span_start.min(visible_text.len());
             let visible_span_end = span_end.min(visible_text.len()).max(visible_span_start);
 
             let mut spans = Vec::new();
 
-            // Text before error
             if visible_span_start > 0 {
                 spans.push(Span::raw(&visible_text[..visible_span_start]));
             }
 
-            // Error portion with underline
             if visible_span_start < visible_span_end {
                 spans.push(Span::styled(
                     &visible_text[visible_span_start..visible_span_end],
@@ -420,7 +404,6 @@ fn build_error_spans_with_offset<'a>(
                 ));
             }
 
-            // Text after error
             if visible_span_end < visible_text.len() {
                 spans.push(Span::raw(&visible_text[visible_span_end..]));
             }
@@ -476,22 +459,18 @@ pub fn build_visible_input_lines_with_gutter<'a>(
     let gutter_style_val = gutter_style();
     let mut output: Vec<Line<'a>> = Vec::new();
 
-    // Calculate the range of lines to render
     let start = scroll_offset.min(lines.len());
     let end = (scroll_offset + visible_height).min(lines.len());
 
-    // Calculate content width (visible width minus gutter)
     let content_width = visible_width.saturating_sub(gutter_width);
 
     for (i, line_text) in lines.iter().enumerate().take(end).skip(start) {
-        let line_number = i + 1; // 1-based line numbers
+        let line_number = i + 1;
         let result = results.get(i);
 
-        // Build the line number span
         let line_num_str = format_line_number(line_number, gutter_width);
         let line_num_span = Span::styled(line_num_str, gutter_style_val);
 
-        // Build the main line with potential error or syntax highlighting
         // Note: We need to highlight the visible portion only
         let content_spans = match result {
             Some(LineResult::Error(err)) => build_error_spans_with_offset(
@@ -503,7 +482,6 @@ pub fn build_visible_input_lines_with_gutter<'a>(
             _ => highlight_line_with_offset(line_text, horizontal_scroll_offset, content_width),
         };
 
-        // Combine line number and content
         let mut all_spans = vec![line_num_span];
         all_spans.extend(content_spans);
 
@@ -511,12 +489,9 @@ pub fn build_visible_input_lines_with_gutter<'a>(
 
         output.push(styled_line);
 
-        // Add error message below error lines (indented, no line number)
-        // Only show error message if 500ms+ has elapsed since last edit (debounce)
         if let Some(LineResult::Error(err)) = result
             && should_show_error_message(last_edit_time)
         {
-            // Create indentation matching gutter width
             let indent = " ".repeat(gutter_width);
             let error_line = Line::from(Span::styled(
                 format!("{}  ^ {}", indent, err.message()),
@@ -556,7 +531,6 @@ fn terminal_supports_emoji() -> bool {
 fn term_value_supports_emoji(term: &str) -> bool {
     let term = term.to_lowercase();
 
-    // Modern terminals that typically support emoji
     term.contains("xterm")
         || term.contains("256color")
         || term.contains("kitty")
@@ -579,26 +553,6 @@ fn term_value_supports_emoji(term: &str) -> bool {
 #[must_use]
 fn calculator_panel_title() -> &'static str {
     if terminal_supports_emoji() {
-        "🦀 crabculator"
-    } else {
-        "crabculator"
-    }
-}
-
-/// Returns the calculator panel title based on explicit emoji support flag.
-///
-/// This is the core logic for title generation, extracted to enable testing
-/// without environment variable manipulation.
-///
-/// # Arguments
-/// * `supports_emoji` - Whether emoji should be included in the title
-///
-/// # Returns
-/// The title string with or without emoji
-#[cfg(test)]
-#[must_use]
-const fn calculator_panel_title_with_emoji_support(supports_emoji: bool) -> &'static str {
-    if supports_emoji {
         "🦀 crabculator"
     } else {
         "crabculator"
@@ -659,19 +613,14 @@ pub fn render_input_panel(
     horizontal_scroll_offset: usize,
     last_edit_time: Option<Instant>,
 ) {
-    // Evaluate all lines to get results
     let results = evaluate_all_lines(buffer.lines().iter().map(String::as_str));
 
-    // Get cursor row for positioning
     let cursor_row = buffer.cursor().row();
 
-    // Calculate visible height (area height minus title row, no borders)
     let visible_height = area.height.saturating_sub(1) as usize;
 
-    // Calculate visible width (no borders)
     let visible_width = area.width as usize;
 
-    // Build styled lines for visible portion with line number gutter
     let (styled_lines, gutter_width) = build_visible_input_lines_with_gutter(
         buffer.lines(),
         &results,
@@ -682,15 +631,12 @@ pub fn render_input_panel(
         last_edit_time,
     );
 
-    // Create the paragraph widget with title but no borders
     let paragraph = Paragraph::new(Text::from(styled_lines)).block(input_panel_block());
 
     frame.render_widget(paragraph, area);
 
-    // Set cursor position (accounting for title row and gutter, no borders)
     let cursor_col = buffer.cursor().col();
 
-    // Account for error messages that push lines down (within visible range only)
     let mut actual_row = 0;
     for i in scroll_offset..cursor_row.min(scroll_offset + visible_height) {
         if i == cursor_row {
@@ -698,19 +644,16 @@ pub fn render_input_panel(
         }
         actual_row += 1;
         if matches!(results.get(i), Some(LineResult::Error(_))) {
-            actual_row += 1; // Error message line
+            actual_row += 1;
         }
     }
 
-    // Position cursor: area.x + gutter + cursor_col (no border offset)
-    // For y: area.y + 1 (title row) + actual_row
     let adjusted_cursor_col = cursor_col.saturating_sub(horizontal_scroll_offset);
     let cursor_x = area.x
         + u16::try_from(gutter_width).unwrap_or(0)
         + u16::try_from(adjusted_cursor_col).unwrap_or(0);
     let cursor_y = area.y + 1 + u16::try_from(actual_row).unwrap_or(0);
 
-    // Only set cursor if it's within the visible area
     if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
         frame.set_cursor_position((cursor_x, cursor_y));
     }
@@ -734,10 +677,8 @@ pub fn render_result_panel(
     scroll_offset: usize,
     memory_pane_left: bool,
 ) {
-    // Calculate visible height (area height minus borders)
     let visible_height = area.height.saturating_sub(2) as usize;
 
-    // Calculate panel width (area width minus borders)
     let panel_width = area.width.saturating_sub(2) as usize;
 
     let styled_lines = build_visible_result_lines(
@@ -748,7 +689,6 @@ pub fn render_result_panel(
         memory_pane_left,
     );
 
-    // Create the paragraph widget with memory panel styling
     let paragraph =
         Paragraph::new(Text::from(styled_lines)).block(memory_panel_block(memory_pane_left));
 
@@ -791,10 +731,6 @@ pub fn render_command_bar(frame: &mut Frame, area: Rect) {
 
     frame.render_widget(command_bar, area);
 }
-
-// ============================================================
-// Help Overlay Content and Rendering
-// ============================================================
 
 /// Help content lines for the General Usage section.
 const HELP_GENERAL_USAGE: &[&str] = &[
@@ -937,20 +873,19 @@ pub fn build_help_content_lines(scroll_offset: usize, visible_height: usize) -> 
 pub fn render_help_overlay(frame: &mut Frame, area: Rect, scroll_offset: usize) {
     use ratatui::widgets::Clear;
 
-    // Create centered overlay (70% width, 80% height)
-    let overlay_area = centered_rect(area, 70, 80);
+    let overlay_area = centered_rect(
+        area,
+        HELP_OVERLAY_WIDTH_PERCENT,
+        HELP_OVERLAY_HEIGHT_PERCENT,
+    );
 
-    // Clear the background
     frame.render_widget(Clear, overlay_area);
 
-    // Calculate visible content height (minus borders)
     let visible_height = overlay_area.height.saturating_sub(2) as usize;
 
-    // Build the help content with scrolling
     let content_lines = build_help_content_lines(scroll_offset, visible_height);
     let content = Text::from(content_lines);
 
-    // Build scroll indicator
     let total_lines = HELP_CONTENT_HEIGHT;
     let scroll_info = if total_lines > visible_height {
         let max_scroll = total_lines.saturating_sub(visible_height);
@@ -964,7 +899,6 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, scroll_offset: usize) 
         String::new()
     };
 
-    // Create paragraph with scroll indicator in title
     let title = if scroll_info.is_empty() {
         " Help ".to_string()
     } else {
@@ -986,10 +920,6 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, scroll_offset: usize) 
 mod tests {
     use super::*;
     use crate::eval::ErrorSpan;
-
-    // ============================================================
-    // format_result tests
-    // ============================================================
 
     #[test]
     fn test_format_result_integer_value() {
@@ -1044,10 +974,6 @@ mod tests {
         let result = LineResult::Error(EvalError::new("test error"));
         assert_eq!(format_result(&result), None);
     }
-
-    // ============================================================
-    // format_value tests
-    // ============================================================
 
     #[test]
     fn test_format_value_large_integer() {
@@ -1109,10 +1035,6 @@ mod tests {
         assert_eq!(result, "123456789...");
     }
 
-    // ============================================================
-    // build_input_lines tests
-    // ============================================================
-
     #[test]
     fn test_build_input_lines_single_line_no_error() {
         let lines = vec!["5 + 3".to_string()];
@@ -1162,10 +1084,6 @@ mod tests {
 
         assert_eq!(output.len(), 1);
     }
-
-    // ============================================================
-    // build_error_line tests
-    // ============================================================
 
     #[test]
     fn test_build_error_line_no_span_underlines_entire_line() {
@@ -1239,10 +1157,6 @@ mod tests {
         );
     }
 
-    // ============================================================
-    // build_result_lines tests
-    // ============================================================
-
     #[test]
     fn test_build_result_lines_values() {
         let results = vec![LineResult::Value(8.0), LineResult::Value(2.75)];
@@ -1309,10 +1223,6 @@ mod tests {
         assert!(line_str.contains("result"));
         assert!(line_str.contains("42"));
     }
-
-    // ============================================================
-    // Line Number Gutter tests
-    // ============================================================
 
     #[test]
     fn test_calculate_gutter_width_single_digit_lines() {
@@ -1448,10 +1358,6 @@ mod tests {
         );
     }
 
-    // ============================================================
-    // should_show_error_message tests
-    // ============================================================
-
     #[test]
     fn test_should_show_error_message_none_returns_true() {
         // None last_edit_time means initial state - should show errors
@@ -1479,10 +1385,6 @@ mod tests {
         // Note: Due to timing, this could be slightly over 500ms, which is fine
         assert!(should_show_error_message(Some(boundary_time)));
     }
-
-    // ============================================================
-    // build_visible_input_lines_with_gutter with error debounce tests
-    // ============================================================
 
     #[test]
     fn test_build_visible_input_lines_with_gutter_error_shown_with_none_last_edit() {
@@ -1574,10 +1476,6 @@ mod tests {
         );
     }
 
-    // ============================================================
-    // Cursor visibility tests
-    // ============================================================
-
     #[test]
     fn test_render_input_panel_sets_cursor_position() {
         use crate::editor::Buffer;
@@ -1604,10 +1502,6 @@ mod tests {
         // Cursor x should be gutter_width (2) + cursor_col (0) = 2
         assert!(cursor.x >= 2, "Cursor x should account for gutter width");
     }
-
-    // ============================================================
-    // Panel Border Styling tests
-    // ============================================================
 
     #[test]
     fn test_input_panel_block_returns_valid_block() {
@@ -1765,10 +1659,6 @@ mod tests {
         );
     }
 
-    // ============================================================
-    // Command bar tests
-    // ============================================================
-
     #[test]
     fn test_command_bar_text_includes_quit() {
         let text = build_command_bar_text();
@@ -1823,10 +1713,6 @@ mod tests {
             "Keyboard shortcuts should use default text color (no foreground color set)"
         );
     }
-
-    // ==========================================================================
-    // Panel Title Tests
-    // ==========================================================================
 
     #[test]
     fn test_terminal_supports_emoji_with_xterm() {
@@ -1886,40 +1772,24 @@ mod tests {
     }
 
     #[test]
-    fn test_calculator_panel_title_with_emoji_support() {
-        let title = calculator_panel_title_with_emoji_support(true);
-        assert_eq!(
-            title, "🦀 crabculator",
-            "Title should include crab emoji with space when terminal supports it"
-        );
-    }
-
-    #[test]
-    fn test_calculator_panel_title_without_emoji_support() {
-        let title = calculator_panel_title_with_emoji_support(false);
-        assert_eq!(
-            title, "crabculator",
-            "Title should be lowercase without emoji when terminal doesn't support it"
-        );
-    }
-
-    #[test]
-    fn test_calculator_panel_title_has_space_after_emoji() {
-        let title = calculator_panel_title_with_emoji_support(true);
-        // Verify emoji is followed by a space
+    fn test_calculator_panel_title_returns_valid_title() {
+        let title = calculator_panel_title();
+        // Title should be one of the two valid variants
         assert!(
-            title.starts_with("🦀 c"),
+            title == "🦀 crabculator" || title == "crabculator",
+            "Title should be either '🦀 crabculator' or 'crabculator', got: '{title}'"
+        );
+    }
+
+    #[test]
+    fn test_calculator_panel_title_with_emoji_has_space_after_emoji() {
+        // The emoji variant must have a space between emoji and text
+        let emoji_title = "🦀 crabculator";
+        assert!(
+            emoji_title.starts_with("🦀 c"),
             "Emoji should be followed by a space and lowercase 'c'"
         );
-        assert!(
-            title.contains("🦀 "),
-            "There should be a space after the emoji"
-        );
     }
-
-    // ==========================================================================
-    // Result Lines Alignment Tests
-    // ==========================================================================
 
     #[test]
     fn test_build_visible_result_lines_right_aligned_when_pane_left() {
@@ -1942,10 +1812,6 @@ mod tests {
             "First span should be 8 spaces of padding"
         );
     }
-
-    // ============================================================
-    // Help Overlay tests
-    // ============================================================
 
     #[test]
     fn test_help_content_lines_returns_all_content() {

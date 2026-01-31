@@ -20,10 +20,8 @@ fn main() -> io::Result<()> {
         if event::poll(std::time::Duration::from_millis(250))?
             && let Event::Key(key) = event::read()?
         {
-            // Track whether we need to save state after this key event
             let mut should_save = false;
 
-            // Modal behavior: if help overlay is visible, capture input for overlay
             if app.help_visible {
                 match key.code {
                     KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -39,21 +37,18 @@ fn main() -> io::Result<()> {
                         app.scroll_help_down(ui::HELP_CONTENT_HEIGHT);
                     }
                     KeyCode::PageUp => {
-                        // Scroll up by 10 lines
                         for _ in 0..10 {
                             app.scroll_help_up();
                         }
                     }
                     KeyCode::PageDown => {
-                        // Scroll down by 10 lines
                         for _ in 0..10 {
                             app.scroll_help_down(ui::HELP_CONTENT_HEIGHT);
                         }
                     }
-                    _ => {} // Ignore other keys when help is visible
+                    _ => {}
                 }
             } else {
-                // Normal editor mode
                 match key.code {
                     KeyCode::Char('c' | 'q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.quit();
@@ -116,7 +111,6 @@ fn main() -> io::Result<()> {
                 }
             }
 
-            // Auto-save state after buffer modifications
             if should_save {
                 app.save_state();
             }

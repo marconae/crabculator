@@ -9,6 +9,10 @@ use std::hash::BuildHasher;
 use crate::eval::ast::{BinaryOp, Expr};
 use crate::eval::error::EvalError;
 
+/// Maximum input value for the factorial operator.
+/// 170! is the largest factorial that fits in an f64 without overflowing to infinity.
+const MAX_FACTORIAL_INPUT: f64 = 170.0;
+
 /// Evaluates an expression AST with the given variable bindings.
 ///
 /// # Arguments
@@ -42,6 +46,29 @@ pub fn evaluate<S: BuildHasher>(
             let val = evaluate(inner, variables)?;
             Ok(-val)
         }
+        Expr::Factorial(inner) => {
+            let val = evaluate(inner, variables)?;
+            if val < 0.0 {
+                return Err(EvalError::new("factorial requires a non-negative integer"));
+            }
+            if val.fract() != 0.0 {
+                return Err(EvalError::new("factorial requires an integer argument"));
+            }
+            if val > MAX_FACTORIAL_INPUT {
+                return Err(EvalError::new(
+                    "factorial overflow: argument must be <= 170",
+                ));
+            }
+            #[allow(
+                clippy::cast_sign_loss,
+                clippy::cast_possible_truncation,
+                clippy::cast_precision_loss
+            )]
+            let n = val as u64;
+            #[allow(clippy::cast_precision_loss)]
+            let result = (1..=n).fold(1.0f64, |acc, i| acc * i as f64);
+            Ok(result)
+        }
         Expr::FunctionCall { name, args } => {
             let evaluated_args: Result<Vec<f64>, EvalError> =
                 args.iter().map(|arg| evaluate(arg, variables)).collect();
@@ -74,15 +101,12 @@ fn call_builtin(name: &str, args: &[f64]) -> Result<f64, EvalError> {
     let arg_count = args.len();
 
     match name {
-        // Basic functions (1 arg)
         "sqrt" => expect_args(name, 1, arg_count).map(|()| args[0].sqrt()),
         "cbrt" => expect_args(name, 1, arg_count).map(|()| args[0].cbrt()),
         "abs" => expect_args(name, 1, arg_count).map(|()| args[0].abs()),
 
-        // Basic functions (2 args)
         "pow" => expect_args(name, 2, arg_count).map(|()| args[0].powf(args[1])),
 
-        // Trigonometric functions (1 arg)
         "sin" => expect_args(name, 1, arg_count).map(|()| args[0].sin()),
         "cos" => expect_args(name, 1, arg_count).map(|()| args[0].cos()),
         "tan" => expect_args(name, 1, arg_count).map(|()| args[0].tan()),
@@ -90,10 +114,8 @@ fn call_builtin(name: &str, args: &[f64]) -> Result<f64, EvalError> {
         "acos" => expect_args(name, 1, arg_count).map(|()| args[0].acos()),
         "atan" => expect_args(name, 1, arg_count).map(|()| args[0].atan()),
 
-        // Trigonometric functions (2 args)
         "atan2" => expect_args(name, 2, arg_count).map(|()| args[0].atan2(args[1])),
 
-        // Hyperbolic functions (1 arg)
         "sinh" => expect_args(name, 1, arg_count).map(|()| args[0].sinh()),
         "cosh" => expect_args(name, 1, arg_count).map(|()| args[0].cosh()),
         "tanh" => expect_args(name, 1, arg_count).map(|()| args[0].tanh()),
@@ -101,25 +123,54 @@ fn call_builtin(name: &str, args: &[f64]) -> Result<f64, EvalError> {
         "acosh" => expect_args(name, 1, arg_count).map(|()| args[0].acosh()),
         "atanh" => expect_args(name, 1, arg_count).map(|()| args[0].atanh()),
 
-        // Logarithmic functions (1 arg)
         "ln" => expect_args(name, 1, arg_count).map(|()| args[0].ln()),
         "log2" => expect_args(name, 1, arg_count).map(|()| args[0].log2()),
         "log10" => expect_args(name, 1, arg_count).map(|()| args[0].log10()),
         "exp" => expect_args(name, 1, arg_count).map(|()| args[0].exp()),
         "exp2" => expect_args(name, 1, arg_count).map(|()| args[0].exp2()),
 
-        // Logarithmic functions (2 args)
         "log" => expect_args(name, 2, arg_count).map(|()| args[0].log(args[1])),
 
-        // Rounding functions (1 arg)
         "floor" => expect_args(name, 1, arg_count).map(|()| args[0].floor()),
         "ceil" => expect_args(name, 1, arg_count).map(|()| args[0].ceil()),
         "round" => expect_args(name, 1, arg_count).map(|()| args[0].round()),
 
-        // Utility functions (2 args)
+        "sgn" => expect_args(name, 1, arg_count).map(|()| {
+            if args[0] == 0.0 {
+                0.0
+            } else {
+                args[0].signum()
+            }
+        }),
+        "trunc" => expect_args(name, 1, arg_count).map(|()| args[0].trunc()),
+        "frac" => expect_args(name, 1, arg_count).map(|()| args[0].fract()),
+
+        "degrees" => expect_args(name, 1, arg_count).map(|()| args[0].to_degrees()),
+        "radians" => expect_args(name, 1, arg_count).map(|()| args[0].to_radians()),
+
+        "cot" => expect_args(name, 1, arg_count).map(|()| 1.0 / args[0].tan()),
+        "sec" => expect_args(name, 1, arg_count).map(|()| 1.0 / args[0].cos()),
+        "csc" => expect_args(name, 1, arg_count).map(|()| 1.0 / args[0].sin()),
+
         "min" => expect_args(name, 2, arg_count).map(|()| args[0].min(args[1])),
         "max" => expect_args(name, 2, arg_count).map(|()| args[0].max(args[1])),
         "hypot" => expect_args(name, 2, arg_count).map(|()| args[0].hypot(args[1])),
+
+        "gcd" => {
+            expect_args(name, 2, arg_count)?;
+            if !args[0].is_finite() || !args[1].is_finite() {
+                return Err(EvalError::new("gcd requires finite arguments"));
+            }
+            Ok(compute_gcd(args[0], args[1]))
+        }
+        "ncr" => {
+            expect_args(name, 2, arg_count)?;
+            compute_ncr(args[0], args[1])
+        }
+        "npr" => {
+            expect_args(name, 2, arg_count)?;
+            compute_npr(args[0], args[1])
+        }
 
         _ => Err(EvalError::unknown_function(name)),
     }
@@ -134,27 +185,68 @@ fn expect_args(name: &str, expected: usize, got: usize) -> Result<(), EvalError>
     }
 }
 
+/// Computes the greatest common divisor using the Euclidean algorithm.
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+const fn compute_gcd(a: f64, b: f64) -> f64 {
+    let mut a = a as i64;
+    let mut b = b as i64;
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a.unsigned_abs() as f64
+}
+
+/// Computes the binomial coefficient C(n, k) = n! / (k! * (n-k)!) iteratively.
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+fn compute_ncr(n: f64, k: f64) -> Result<f64, EvalError> {
+    let n = n.trunc() as i64;
+    let k = k.trunc() as i64;
+    if k < 0 || n < 0 || k > n {
+        return Err(EvalError::new(format!(
+            "ncr requires 0 <= k <= n, got n={n}, k={k}"
+        )));
+    }
+    let mut result: f64 = 1.0;
+    for i in 0..k {
+        result = result * (n - i) as f64 / (i + 1) as f64;
+    }
+    Ok(result)
+}
+
+/// Computes the permutation P(n, k) = n! / (n-k)! iteratively.
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+fn compute_npr(n: f64, k: f64) -> Result<f64, EvalError> {
+    let n = n.trunc() as i64;
+    let k = k.trunc() as i64;
+    if k < 0 || n < 0 || k > n {
+        return Err(EvalError::new(format!(
+            "npr requires 0 <= k <= n, got n={n}, k={k}"
+        )));
+    }
+    let mut result: f64 = 1.0;
+    for i in 0..k {
+        result *= (n - i) as f64;
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::f64::consts::{E, FRAC_PI_2, FRAC_PI_4, PI};
 
-    // Helper to create an empty variable context
     fn empty_vars() -> HashMap<String, f64> {
         HashMap::new()
     }
 
-    // Helper to create a variable context with given bindings
     fn vars(bindings: &[(&str, f64)]) -> HashMap<String, f64> {
         bindings
             .iter()
             .map(|(k, v)| ((*k).to_string(), *v))
             .collect()
     }
-
-    // ============================================================
-    // Tests for number literals (3.1.1)
-    // ============================================================
 
     #[test]
     fn test_evaluate_integer_literal() {
@@ -183,10 +275,6 @@ mod tests {
         let result = evaluate(&expr, &empty_vars());
         assert_eq!(result, Ok(-5.5));
     }
-
-    // ============================================================
-    // Tests for variable references (3.1.2)
-    // ============================================================
 
     #[test]
     fn test_evaluate_variable_found() {
@@ -217,13 +305,8 @@ mod tests {
     fn test_evaluate_variable_case_sensitive() {
         let expr = Expr::Variable("X".to_string());
         let result = evaluate(&expr, &vars(&[("x", 10.0)]));
-        // X is not defined, only x is
         assert!(result.is_err());
     }
-
-    // ============================================================
-    // Tests for binary operations (3.1.3)
-    // ============================================================
 
     #[test]
     fn test_evaluate_addition() {
@@ -277,7 +360,6 @@ mod tests {
             right: Box::new(Expr::Number(0.0)),
         };
         let result = evaluate(&expr, &empty_vars());
-        // Rust f64 division by zero yields infinity, not an error
         assert!(result.unwrap().is_infinite());
     }
 
@@ -316,7 +398,6 @@ mod tests {
 
     #[test]
     fn test_evaluate_nested_binary_ops() {
-        // (2 + 3) * 4 = 20
         let expr = Expr::BinaryOp {
             left: Box::new(Expr::BinaryOp {
                 left: Box::new(Expr::Number(2.0)),
@@ -332,7 +413,6 @@ mod tests {
 
     #[test]
     fn test_evaluate_binary_op_with_variable() {
-        // x + 5 where x = 10
         let expr = Expr::BinaryOp {
             left: Box::new(Expr::Variable("x".to_string())),
             op: BinaryOp::Add,
@@ -341,10 +421,6 @@ mod tests {
         let result = evaluate(&expr, &vars(&[("x", 10.0)]));
         assert_eq!(result, Ok(15.0));
     }
-
-    // ============================================================
-    // Tests for unary minus (3.1.4)
-    // ============================================================
 
     #[test]
     fn test_evaluate_unary_minus() {
@@ -369,7 +445,6 @@ mod tests {
 
     #[test]
     fn test_evaluate_unary_minus_in_expression() {
-        // 3 + (-2) = 1
         let expr = Expr::BinaryOp {
             left: Box::new(Expr::Number(3.0)),
             op: BinaryOp::Add,
@@ -378,10 +453,6 @@ mod tests {
         let result = evaluate(&expr, &empty_vars());
         assert_eq!(result, Ok(1.0));
     }
-
-    // ============================================================
-    // Tests for basic math functions (3.2.1)
-    // ============================================================
 
     #[test]
     fn test_function_sqrt() {
@@ -442,10 +513,6 @@ mod tests {
         let result = evaluate(&expr, &empty_vars());
         assert_eq!(result, Ok(256.0));
     }
-
-    // ============================================================
-    // Tests for trigonometric functions (3.2.2)
-    // ============================================================
 
     #[test]
     fn test_function_sin_zero() {
@@ -537,10 +604,6 @@ mod tests {
         assert!((result.unwrap() - FRAC_PI_4).abs() < 1e-10);
     }
 
-    // ============================================================
-    // Tests for hyperbolic functions (3.2.3)
-    // ============================================================
-
     #[test]
     fn test_function_sinh_zero() {
         let expr = Expr::FunctionCall {
@@ -601,10 +664,6 @@ mod tests {
         assert_eq!(result, Ok(0.0));
     }
 
-    // ============================================================
-    // Tests for logarithmic functions (3.2.4)
-    // ============================================================
-
     #[test]
     fn test_function_ln_e() {
         let expr = Expr::FunctionCall {
@@ -627,7 +686,6 @@ mod tests {
 
     #[test]
     fn test_function_log_with_base() {
-        // log(8, 2) = 3 (log base 2 of 8)
         let expr = Expr::FunctionCall {
             name: "log".to_string(),
             args: vec![Expr::Number(8.0), Expr::Number(2.0)],
@@ -685,10 +743,6 @@ mod tests {
         let result = evaluate(&expr, &empty_vars());
         assert_eq!(result, Ok(8.0));
     }
-
-    // ============================================================
-    // Tests for rounding functions (3.2.5)
-    // ============================================================
 
     #[test]
     fn test_function_floor() {
@@ -750,10 +804,6 @@ mod tests {
         assert_eq!(result, Ok(4.0));
     }
 
-    // ============================================================
-    // Tests for utility functions (3.2.6)
-    // ============================================================
-
     #[test]
     fn test_function_min() {
         let expr = Expr::FunctionCall {
@@ -803,10 +853,6 @@ mod tests {
         let result = evaluate(&expr, &empty_vars());
         assert_eq!(result, Ok(5.0));
     }
-
-    // ============================================================
-    // Tests for error cases (3.3)
-    // ============================================================
 
     #[test]
     fn test_error_unknown_function() {
@@ -864,13 +910,8 @@ mod tests {
         );
     }
 
-    // ============================================================
-    // Tests for complex expressions
-    // ============================================================
-
     #[test]
     fn test_complex_expression_with_functions_and_operators() {
-        // sqrt(16) + pow(2, 3) = 4 + 8 = 12
         let expr = Expr::BinaryOp {
             left: Box::new(Expr::FunctionCall {
                 name: "sqrt".to_string(),
@@ -888,7 +929,6 @@ mod tests {
 
     #[test]
     fn test_nested_function_calls() {
-        // sqrt(abs(-16)) = sqrt(16) = 4
         let expr = Expr::FunctionCall {
             name: "sqrt".to_string(),
             args: vec![Expr::FunctionCall {
@@ -902,7 +942,6 @@ mod tests {
 
     #[test]
     fn test_expression_with_multiple_variables() {
-        // a * b + c where a=2, b=3, c=4 => 10
         let expr = Expr::BinaryOp {
             left: Box::new(Expr::BinaryOp {
                 left: Box::new(Expr::Variable("a".to_string())),
@@ -915,10 +954,6 @@ mod tests {
         let result = evaluate(&expr, &vars(&[("a", 2.0), ("b", 3.0), ("c", 4.0)]));
         assert_eq!(result, Ok(10.0));
     }
-
-    // ============================================================
-    // Tests for edge cases with special values
-    // ============================================================
 
     #[test]
     fn test_sqrt_negative_returns_nan() {
@@ -949,5 +984,284 @@ mod tests {
         };
         let result = evaluate(&expr, &empty_vars());
         assert!(result.unwrap().is_nan());
+    }
+
+    #[test]
+    fn test_function_sgn_positive() {
+        let expr = Expr::FunctionCall {
+            name: "sgn".to_string(),
+            args: vec![Expr::Number(42.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(1.0));
+    }
+
+    #[test]
+    fn test_function_sgn_negative() {
+        let expr = Expr::FunctionCall {
+            name: "sgn".to_string(),
+            args: vec![Expr::Number(-7.5)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(-1.0));
+    }
+
+    #[test]
+    fn test_function_sgn_zero() {
+        let expr = Expr::FunctionCall {
+            name: "sgn".to_string(),
+            args: vec![Expr::Number(0.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(0.0));
+    }
+
+    #[test]
+    fn test_function_trunc_positive() {
+        let expr = Expr::FunctionCall {
+            name: "trunc".to_string(),
+            args: vec![Expr::Number(3.7)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(3.0));
+    }
+
+    #[test]
+    fn test_function_trunc_negative() {
+        let expr = Expr::FunctionCall {
+            name: "trunc".to_string(),
+            args: vec![Expr::Number(-3.7)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(-3.0));
+    }
+
+    #[test]
+    fn test_function_frac_positive() {
+        let expr = Expr::FunctionCall {
+            name: "frac".to_string(),
+            args: vec![Expr::Number(3.75)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(0.75));
+    }
+
+    #[test]
+    fn test_function_frac_negative() {
+        let expr = Expr::FunctionCall {
+            name: "frac".to_string(),
+            args: vec![Expr::Number(-3.75)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(-0.75));
+    }
+
+    #[test]
+    fn test_function_degrees() {
+        let expr = Expr::FunctionCall {
+            name: "degrees".to_string(),
+            args: vec![Expr::Number(std::f64::consts::PI)],
+        };
+        let result = evaluate(&expr, &empty_vars()).unwrap();
+        assert!((result - 180.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_function_radians() {
+        let expr = Expr::FunctionCall {
+            name: "radians".to_string(),
+            args: vec![Expr::Number(180.0)],
+        };
+        let result = evaluate(&expr, &empty_vars()).unwrap();
+        assert!((result - std::f64::consts::PI).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_function_cot() {
+        let expr = Expr::FunctionCall {
+            name: "cot".to_string(),
+            args: vec![Expr::Number(std::f64::consts::FRAC_PI_4)],
+        };
+        let result = evaluate(&expr, &empty_vars()).unwrap();
+        assert!((result - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_function_sec() {
+        let expr = Expr::FunctionCall {
+            name: "sec".to_string(),
+            args: vec![Expr::Number(0.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(1.0));
+    }
+
+    #[test]
+    fn test_function_csc() {
+        let expr = Expr::FunctionCall {
+            name: "csc".to_string(),
+            args: vec![Expr::Number(std::f64::consts::FRAC_PI_2)],
+        };
+        let result = evaluate(&expr, &empty_vars()).unwrap();
+        assert!((result - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_function_gcd_basic() {
+        let expr = Expr::FunctionCall {
+            name: "gcd".to_string(),
+            args: vec![Expr::Number(48.0), Expr::Number(18.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(6.0));
+    }
+
+    #[test]
+    fn test_function_gcd_zero() {
+        let expr = Expr::FunctionCall {
+            name: "gcd".to_string(),
+            args: vec![Expr::Number(0.0), Expr::Number(0.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(0.0));
+    }
+
+    #[test]
+    fn test_function_gcd_one_zero() {
+        let expr = Expr::FunctionCall {
+            name: "gcd".to_string(),
+            args: vec![Expr::Number(7.0), Expr::Number(0.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(7.0));
+    }
+
+    #[test]
+    fn test_function_gcd_negative_first() {
+        let expr = Expr::FunctionCall {
+            name: "gcd".to_string(),
+            args: vec![Expr::Number(-48.0), Expr::Number(18.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(6.0));
+    }
+
+    #[test]
+    fn test_function_gcd_both_negative() {
+        let expr = Expr::FunctionCall {
+            name: "gcd".to_string(),
+            args: vec![Expr::Number(-12.0), Expr::Number(-8.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(4.0));
+    }
+
+    #[test]
+    fn test_function_ncr_basic() {
+        let expr = Expr::FunctionCall {
+            name: "ncr".to_string(),
+            args: vec![Expr::Number(10.0), Expr::Number(3.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(120.0));
+    }
+
+    #[test]
+    fn test_function_ncr_zero() {
+        let expr = Expr::FunctionCall {
+            name: "ncr".to_string(),
+            args: vec![Expr::Number(5.0), Expr::Number(0.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(1.0));
+    }
+
+    #[test]
+    fn test_function_ncr_equal() {
+        let expr = Expr::FunctionCall {
+            name: "ncr".to_string(),
+            args: vec![Expr::Number(5.0), Expr::Number(5.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(1.0));
+    }
+
+    #[test]
+    fn test_function_ncr_error_k_greater_than_n() {
+        let expr = Expr::FunctionCall {
+            name: "ncr".to_string(),
+            args: vec![Expr::Number(3.0), Expr::Number(5.0)],
+        };
+        assert!(evaluate(&expr, &empty_vars()).is_err());
+    }
+
+    #[test]
+    fn test_function_ncr_error_negative_k() {
+        let expr = Expr::FunctionCall {
+            name: "ncr".to_string(),
+            args: vec![Expr::Number(5.0), Expr::Number(-1.0)],
+        };
+        assert!(evaluate(&expr, &empty_vars()).is_err());
+    }
+
+    #[test]
+    fn test_function_npr_basic() {
+        let expr = Expr::FunctionCall {
+            name: "npr".to_string(),
+            args: vec![Expr::Number(5.0), Expr::Number(2.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(20.0));
+    }
+
+    #[test]
+    fn test_function_npr_zero() {
+        let expr = Expr::FunctionCall {
+            name: "npr".to_string(),
+            args: vec![Expr::Number(5.0), Expr::Number(0.0)],
+        };
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(1.0));
+    }
+
+    #[test]
+    fn test_function_npr_error_k_greater_than_n() {
+        let expr = Expr::FunctionCall {
+            name: "npr".to_string(),
+            args: vec![Expr::Number(3.0), Expr::Number(5.0)],
+        };
+        assert!(evaluate(&expr, &empty_vars()).is_err());
+    }
+
+    #[test]
+    fn test_factorial_five() {
+        let expr = Expr::Factorial(Box::new(Expr::Number(5.0)));
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(120.0));
+    }
+
+    #[test]
+    fn test_factorial_zero() {
+        let expr = Expr::Factorial(Box::new(Expr::Number(0.0)));
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(1.0));
+    }
+
+    #[test]
+    fn test_factorial_one() {
+        let expr = Expr::Factorial(Box::new(Expr::Number(1.0)));
+        assert_eq!(evaluate(&expr, &empty_vars()), Ok(1.0));
+    }
+
+    #[test]
+    fn test_factorial_error_negative() {
+        let expr = Expr::Factorial(Box::new(Expr::Number(-1.0)));
+        let result = evaluate(&expr, &empty_vars());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message().contains("non-negative"));
+    }
+
+    #[test]
+    fn test_factorial_error_non_integer() {
+        let expr = Expr::Factorial(Box::new(Expr::Number(3.5)));
+        let result = evaluate(&expr, &empty_vars());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message().contains("integer"));
+    }
+
+    #[test]
+    fn test_factorial_error_overflow() {
+        let expr = Expr::Factorial(Box::new(Expr::Number(171.0)));
+        let result = evaluate(&expr, &empty_vars());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message().contains("overflow"));
+    }
+
+    #[test]
+    fn test_factorial_170() {
+        let expr = Expr::Factorial(Box::new(Expr::Number(170.0)));
+        let result = evaluate(&expr, &empty_vars());
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_finite());
     }
 }

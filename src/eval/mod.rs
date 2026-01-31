@@ -128,7 +128,6 @@ pub fn evaluate_all_lines_with_context<'a>(
 mod tests {
     use super::*;
 
-    // Basic expression evaluation tests
     #[test]
     fn test_evaluate_simple_addition() {
         let context = EvalContext::new();
@@ -164,11 +163,9 @@ mod tests {
         assert_eq!(result, Ok(2.0));
     }
 
-    // Operator precedence tests
     #[test]
     fn test_evaluate_operator_precedence() {
         let context = EvalContext::new();
-        // 5 + 3 * 2 = 5 + 6 = 11 (multiplication before addition)
         let result = evaluate_expression("5 + 3 * 2", &context);
         assert_eq!(result, Ok(11.0));
     }
@@ -176,7 +173,6 @@ mod tests {
     #[test]
     fn test_evaluate_parentheses() {
         let context = EvalContext::new();
-        // (5 + 3) * 2 = 8 * 2 = 16
         let result = evaluate_expression("(5 + 3) * 2", &context);
         assert_eq!(result, Ok(16.0));
     }
@@ -188,7 +184,6 @@ mod tests {
         assert_eq!(result, Ok(25.0));
     }
 
-    // Built-in function tests
     #[test]
     fn test_evaluate_sqrt() {
         let context = EvalContext::new();
@@ -217,7 +212,6 @@ mod tests {
         assert_eq!(result, Ok(5.0));
     }
 
-    // Float tests
     #[test]
     fn test_evaluate_float_expression() {
         let context = EvalContext::new();
@@ -232,7 +226,6 @@ mod tests {
         assert_eq!(result, Ok(2.5)); // f64 division
     }
 
-    // Error tests
     #[test]
     fn test_evaluate_syntax_error() {
         let context = EvalContext::new();
@@ -254,7 +247,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // Variable context tests
     #[test]
     fn test_evaluate_with_predefined_variable() {
         let mut context = EvalContext::new();
@@ -388,12 +380,10 @@ mod tests {
         assert_eq!(results[2], LineResult::Value(8.0));
     }
 
-    // Complex expression tests
     #[test]
     fn test_evaluate_complex_expression() {
         let context = EvalContext::new();
         let result = evaluate_expression("(10 + 5) * 2 - 8 / 4", &context);
-        // (10 + 5) * 2 - 8 / 4 = 15 * 2 - 2 = 30 - 2 = 28
         assert_eq!(result, Ok(28.0));
     }
 
@@ -411,32 +401,6 @@ mod tests {
         assert_eq!(result, Ok(42.0));
     }
 
-    // ============================================================
-    // Mathematical function alias tests (short names without math:: prefix)
-    // ============================================================
-
-    // Basic math functions
-    #[test]
-    fn test_sqrt_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("sqrt(16)", &context);
-        assert_eq!(result, Ok(4.0));
-    }
-
-    #[test]
-    fn test_cbrt_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("cbrt(27)", &context);
-        assert_eq!(result, Ok(3.0));
-    }
-
-    #[test]
-    fn test_abs_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("abs(-5)", &context);
-        assert_eq!(result, Ok(5.0));
-    }
-
     #[test]
     fn test_abs_short_alias_float() {
         let context = EvalContext::new();
@@ -444,14 +408,6 @@ mod tests {
         assert_eq!(result, Ok(3.5));
     }
 
-    #[test]
-    fn test_pow_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("pow(2, 8)", &context);
-        assert_eq!(result, Ok(256.0));
-    }
-
-    // Trigonometric functions
     #[test]
     fn test_sin_short_alias() {
         let context = EvalContext::new();
@@ -463,106 +419,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_cos_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("cos(0)", &context);
-        assert_eq!(result, Ok(1.0));
-    }
-
-    #[test]
-    fn test_tan_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("tan(0)", &context);
-        assert_eq!(result, Ok(0.0));
-    }
-
-    #[test]
-    fn test_asin_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("asin(1)", &context);
-        if let Ok(v) = result {
-            assert!(
-                (v - std::f64::consts::FRAC_PI_2).abs() < 1e-10,
-                "asin(1) should be pi/2, got {v}",
-            );
-        } else {
-            panic!("Expected Float result, got {result:?}");
-        }
-    }
-
-    #[test]
-    fn test_acos_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("acos(1)", &context);
-        assert_eq!(result, Ok(0.0));
-    }
-
-    #[test]
-    fn test_atan_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("atan(0)", &context);
-        assert_eq!(result, Ok(0.0));
-    }
-
-    #[test]
-    fn test_atan2_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("atan2(1, 1)", &context);
-        if let Ok(v) = result {
-            assert!(
-                (v - std::f64::consts::FRAC_PI_4).abs() < 1e-10,
-                "atan2(1, 1) should be pi/4, got {v}",
-            );
-        } else {
-            panic!("Expected Float result, got {result:?}");
-        }
-    }
-
-    // Hyperbolic functions
-    #[test]
-    fn test_sinh_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("sinh(0)", &context);
-        assert_eq!(result, Ok(0.0));
-    }
-
-    #[test]
-    fn test_cosh_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("cosh(0)", &context);
-        assert_eq!(result, Ok(1.0));
-    }
-
-    #[test]
-    fn test_tanh_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("tanh(0)", &context);
-        assert_eq!(result, Ok(0.0));
-    }
-
-    #[test]
-    fn test_asinh_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("asinh(0)", &context);
-        assert_eq!(result, Ok(0.0));
-    }
-
-    #[test]
-    fn test_acosh_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("acosh(1)", &context);
-        assert_eq!(result, Ok(0.0));
-    }
-
-    #[test]
-    fn test_atanh_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("atanh(0)", &context);
-        assert_eq!(result, Ok(0.0));
-    }
-
-    // Logarithmic and exponential functions
     #[test]
     fn test_ln_short_alias() {
         let context = EvalContext::new();
@@ -628,54 +484,12 @@ mod tests {
         assert_eq!(result, Ok(8.0));
     }
 
-    // Rounding functions
-    #[test]
-    fn test_floor_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("floor(3.9)", &context);
-        assert_eq!(result, Ok(3.0));
-    }
-
-    #[test]
-    fn test_ceil_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("ceil(3.1)", &context);
-        assert_eq!(result, Ok(4.0));
-    }
-
     #[test]
     fn test_round_short_alias() {
         let context = EvalContext::new();
         let result = evaluate_expression("round(3.5)", &context);
-        // Note: round(3.5) in f64.round() uses "round half away from zero"
         assert_eq!(result, Ok(4.0));
     }
-
-    // Utility functions
-    #[test]
-    fn test_min_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("min(3, 7)", &context);
-        assert_eq!(result, Ok(3.0));
-    }
-
-    #[test]
-    fn test_max_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("max(3, 7)", &context);
-        assert_eq!(result, Ok(7.0));
-    }
-
-    #[test]
-    fn test_hypot_short_alias() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("hypot(3, 4)", &context);
-        assert_eq!(result, Ok(5.0));
-    }
-
-    // ============================================================
-    // Tests for functions with variable arguments
-    // ============================================================
 
     #[test]
     fn test_sqrt_with_variable() {
@@ -688,7 +502,6 @@ mod tests {
     #[test]
     fn test_sin_with_pi_variable() {
         let context = EvalContext::new();
-        // pi is already predefined
         let result = evaluate_expression("sin(pi)", &context);
         if let Ok(v) = result {
             assert!(v.abs() < 1e-10, "sin(pi) should be ~0, got {v}");
@@ -705,54 +518,6 @@ mod tests {
         let result = evaluate_expression("pow(base, exp)", &context);
         assert_eq!(result, Ok(1024.0));
     }
-
-    // ============================================================
-    // Tests for error cases
-    // ============================================================
-
-    #[test]
-    fn test_sqrt_negative_returns_nan() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("sqrt(-1)", &context);
-        if let Ok(v) = result {
-            assert!(v.is_nan(), "sqrt(-1) should return NaN, got {v}");
-        } else {
-            // Some implementations might return an error instead
-            // That's also acceptable per the spec
-            assert!(result.is_err() || matches!(result, Ok(f) if f.is_nan()));
-        }
-    }
-
-    #[test]
-    fn test_log_zero_returns_neg_infinity() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("ln(0)", &context);
-        if let Ok(v) = result {
-            assert!(
-                v.is_infinite() && v < 0.0,
-                "ln(0) should return -infinity, got {v}",
-            );
-        } else {
-            // Error is also acceptable
-            assert!(result.is_err() || matches!(result, Ok(f) if f.is_infinite()));
-        }
-    }
-
-    #[test]
-    fn test_acosh_less_than_one_returns_nan() {
-        let context = EvalContext::new();
-        let result = evaluate_expression("acosh(0.5)", &context);
-        if let Ok(v) = result {
-            assert!(v.is_nan(), "acosh(0.5) should return NaN, got {v}");
-        } else {
-            // Error is also acceptable
-            assert!(result.is_err() || matches!(result, Ok(f) if f.is_nan()));
-        }
-    }
-
-    // ============================================================
-    // Tests for power operator
-    // ============================================================
 
     #[test]
     fn test_power_operator() {
@@ -774,5 +539,333 @@ mod tests {
         let context = EvalContext::new();
         let result = evaluate_expression("2^(3+1)", &context);
         assert_eq!(result, Ok(16.0));
+    }
+
+    #[test]
+    fn test_integration_sgn_negative() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("sgn(-5)", &context);
+        assert_eq!(result, Ok(-1.0));
+    }
+
+    #[test]
+    fn test_integration_sgn_zero() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("sgn(0)", &context);
+        assert_eq!(result, Ok(0.0));
+    }
+
+    #[test]
+    fn test_integration_sgn_positive() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("sgn(3.7)", &context);
+        assert_eq!(result, Ok(1.0));
+    }
+
+    #[test]
+    fn test_integration_trunc_positive() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("trunc(3.7)", &context);
+        assert_eq!(result, Ok(3.0));
+    }
+
+    #[test]
+    fn test_integration_trunc_negative() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("trunc(-2.9)", &context);
+        assert_eq!(result, Ok(-2.0));
+    }
+
+    #[test]
+    fn test_integration_frac_positive() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("frac(3.7)", &context);
+        if let Ok(v) = result {
+            assert!((v - 0.7).abs() < 1e-10, "frac(3.7) should be ~0.7, got {v}");
+        } else {
+            panic!("Expected Ok result, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_integration_frac_negative() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("frac(-2.9)", &context);
+        if let Ok(v) = result {
+            assert!(
+                (v - (-0.9)).abs() < 1e-10,
+                "frac(-2.9) should be ~-0.9, got {v}",
+            );
+        } else {
+            panic!("Expected Ok result, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_integration_degrees() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("degrees(pi)", &context);
+        if let Ok(v) = result {
+            assert!(
+                (v - 180.0).abs() < 1e-10,
+                "degrees(pi) should be 180, got {v}",
+            );
+        } else {
+            panic!("Expected Ok result, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_integration_radians() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("radians(180)", &context);
+        if let Ok(v) = result {
+            assert!(
+                (v - std::f64::consts::PI).abs() < 1e-10,
+                "radians(180) should be pi, got {v}",
+            );
+        } else {
+            panic!("Expected Ok result, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_integration_cot() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("cot(pi/4)", &context);
+        if let Ok(v) = result {
+            assert!((v - 1.0).abs() < 1e-10, "cot(pi/4) should be ~1, got {v}",);
+        } else {
+            panic!("Expected Ok result, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_integration_sec() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("sec(0)", &context);
+        assert_eq!(result, Ok(1.0));
+    }
+
+    #[test]
+    fn test_integration_csc() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("csc(pi/2)", &context);
+        if let Ok(v) = result {
+            assert!((v - 1.0).abs() < 1e-10, "csc(pi/2) should be ~1, got {v}",);
+        } else {
+            panic!("Expected Ok result, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_integration_ncr_five_two() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("ncr(5, 2)", &context);
+        assert_eq!(result, Ok(10.0));
+    }
+
+    #[test]
+    fn test_integration_factorial_five() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("5!", &context);
+        assert_eq!(result, Ok(120.0));
+    }
+
+    #[test]
+    fn test_integration_factorial_zero() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("0!", &context);
+        assert_eq!(result, Ok(1.0));
+    }
+
+    #[test]
+    fn test_integration_factorial_grouped_expression() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("(3+2)!", &context);
+        assert_eq!(result, Ok(120.0));
+    }
+
+    #[test]
+    fn test_integration_factorial_binds_tighter_than_power() {
+        let context = EvalContext::new();
+        // 3!^2 = 6^2 = 36
+        let result = evaluate_expression("3!^2", &context);
+        assert_eq!(result, Ok(36.0));
+    }
+
+    #[test]
+    fn test_integration_factorial_with_multiplication() {
+        let context = EvalContext::new();
+        // 2*4! = 2*24 = 48
+        let result = evaluate_expression("2*4!", &context);
+        assert_eq!(result, Ok(48.0));
+    }
+
+    #[test]
+    fn test_integration_factorial_addition() {
+        let context = EvalContext::new();
+        // 3!+2! = 6+2 = 8
+        let result = evaluate_expression("3!+2!", &context);
+        assert_eq!(result, Ok(8.0));
+    }
+
+    #[test]
+    fn test_integration_factorial_negative_error() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("(-1)!", &context);
+        assert!(result.is_err(), "(-1)! should be an error, got {result:?}");
+    }
+
+    #[test]
+    fn test_integration_factorial_non_integer_error() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("3.5!", &context);
+        assert!(result.is_err(), "3.5! should be an error, got {result:?}");
+    }
+
+    #[test]
+    fn test_integration_factorial_overflow_error() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("171!", &context);
+        assert!(result.is_err(), "171! should be an error, got {result:?}");
+    }
+
+    #[test]
+    fn test_integration_hex_lowercase() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("0xff", &context);
+        assert_eq!(result, Ok(255.0));
+    }
+
+    #[test]
+    fn test_integration_hex_uppercase() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("0xFF", &context);
+        assert_eq!(result, Ok(255.0));
+    }
+
+    #[test]
+    fn test_integration_binary() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("0b1010", &context);
+        assert_eq!(result, Ok(10.0));
+    }
+
+    #[test]
+    fn test_integration_binary_255() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("0b11111111", &context);
+        assert_eq!(result, Ok(255.0));
+    }
+
+    #[test]
+    fn test_integration_octal() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("0o77", &context);
+        assert_eq!(result, Ok(63.0));
+    }
+
+    #[test]
+    fn test_integration_octal_ten() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("0o10", &context);
+        assert_eq!(result, Ok(8.0));
+    }
+
+    #[test]
+    fn test_integration_hex_plus_one() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("0xff + 1", &context);
+        assert_eq!(result, Ok(256.0));
+    }
+
+    #[test]
+    fn test_integration_binary_times_two() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("0b1010 * 2", &context);
+        assert_eq!(result, Ok(20.0));
+    }
+
+    #[test]
+    fn test_integration_mixed_bases() {
+        let context = EvalContext::new();
+        // 0o10 + 0x10 = 8 + 16 = 24
+        let result = evaluate_expression("0o10 + 0x10", &context);
+        assert_eq!(result, Ok(24.0));
+    }
+
+    #[test]
+    fn test_integration_implicit_mult_number_identifier() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("2pi", &context);
+        if let Ok(v) = result {
+            assert!(
+                (v - 2.0 * std::f64::consts::PI).abs() < 1e-10,
+                "2pi should be ~6.283, got {v}",
+            );
+        } else {
+            panic!("Expected Ok result, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_integration_implicit_mult_number_paren() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("3(4+5)", &context);
+        assert_eq!(result, Ok(27.0));
+    }
+
+    #[test]
+    fn test_integration_implicit_mult_paren_paren() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("(2+3)(4+5)", &context);
+        assert_eq!(result, Ok(45.0));
+    }
+
+    #[test]
+    fn test_integration_implicit_mult_paren_identifier() {
+        let context = EvalContext::new();
+        let result = evaluate_expression("(2+3)pi", &context);
+        if let Ok(v) = result {
+            assert!(
+                (v - 5.0 * std::f64::consts::PI).abs() < 1e-10,
+                "(2+3)pi should be ~5*pi, got {v}",
+            );
+        } else {
+            panic!("Expected Ok result, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_integration_sqrt_not_implicit_mult() {
+        let context = EvalContext::new();
+        // sqrt(9) should be a function call, not implicit mult
+        let result = evaluate_expression("sqrt(9)", &context);
+        assert_eq!(result, Ok(3.0));
+    }
+
+    #[test]
+    fn test_integration_implicit_mult_number_function() {
+        let context = EvalContext::new();
+        // 2sqrt(9) = 2 * sqrt(9) = 2 * 3 = 6
+        let result = evaluate_expression("2sqrt(9)", &context);
+        assert_eq!(result, Ok(6.0));
+    }
+
+    #[test]
+    fn test_integration_implicit_mult_precedence_with_power() {
+        let context = EvalContext::new();
+        // 2pi^2 = 2 * (pi^2) since implicit mult has same precedence as *
+        let result = evaluate_expression("2pi^2", &context);
+        if let Ok(v) = result {
+            let expected = 2.0 * std::f64::consts::PI.powi(2);
+            assert!(
+                (v - expected).abs() < 1e-10,
+                "2pi^2 should be ~{expected}, got {v}",
+            );
+        } else {
+            panic!("Expected Ok result, got {result:?}");
+        }
     }
 }

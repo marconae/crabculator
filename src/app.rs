@@ -62,15 +62,7 @@ impl App {
         let _ = storage::save(&state);
     }
 
-    /// Clears all content from the editor.
-    ///
-    /// This method:
-    /// - Clears all lines from the buffer
-    /// - Resets the cursor to position (0, 0)
-    /// - Clears all variables from the evaluation context
-    /// - Resets the scroll offset to 0
-    /// - Resets the horizontal scroll offset to 0
-    /// - Closes the help overlay and resets its scroll offset
+    /// Resets the editor to its initial empty state.
     pub fn clear_all(&mut self) {
         self.buffer.clear();
         self.context.clear();
@@ -88,21 +80,17 @@ impl App {
     ///
     /// # Arguments
     /// * `visible_height` - The number of visible lines in the viewport
-    #[allow(clippy::missing_const_for_fn)] // cursor().row() is not const
-    pub fn adjust_scroll(&mut self, visible_height: usize) {
+    pub const fn adjust_scroll(&mut self, visible_height: usize) {
         if visible_height == 0 {
             return;
         }
 
         let cursor_row = self.buffer.cursor().row();
 
-        // If cursor is above visible area, scroll up to show it
         if cursor_row < self.scroll_offset {
             self.scroll_offset = cursor_row;
         }
 
-        // If cursor is below visible area, scroll down to show it
-        // Last visible line is scroll_offset + visible_height - 1
         if cursor_row >= self.scroll_offset + visible_height {
             self.scroll_offset = cursor_row - visible_height + 1;
         }
@@ -119,23 +107,18 @@ impl App {
     ///
     /// # Arguments
     /// * `visible_width` - The number of visible columns in the viewport
-    #[allow(clippy::missing_const_for_fn)] // cursor().col() is not const
     pub fn adjust_horizontal_scroll(&mut self, visible_width: usize) {
         if visible_width == 0 {
             return;
         }
 
         let cursor_col = self.buffer.cursor().col();
-        // Use a margin for smoother scrolling (5 chars or less if width is small)
         let margin = visible_width.min(5).saturating_sub(1);
 
-        // If cursor is before visible area (with margin), scroll left to show it
         if cursor_col < self.horizontal_scroll_offset + margin {
             self.horizontal_scroll_offset = cursor_col.saturating_sub(margin);
         }
 
-        // If cursor is after visible area (with margin), scroll right to show it
-        // Last visible column is horizontal_scroll_offset + visible_width - 1
         if cursor_col >= self.horizontal_scroll_offset + visible_width - margin {
             self.horizontal_scroll_offset = cursor_col.saturating_sub(visible_width - margin - 1);
         }
@@ -144,8 +127,7 @@ impl App {
     /// Toggles the help overlay visibility.
     ///
     /// When opening the help overlay, resets the scroll offset to 0.
-    #[allow(clippy::missing_const_for_fn)] // Uses conditional logic
-    pub fn toggle_help(&mut self) {
+    pub const fn toggle_help(&mut self) {
         self.help_visible = !self.help_visible;
         if self.help_visible {
             self.help_scroll_offset = 0;
@@ -161,8 +143,7 @@ impl App {
     ///
     /// # Arguments
     /// * `content_height` - The total height of the help content in lines
-    #[allow(clippy::missing_const_for_fn)] // May need more logic in future
-    pub fn scroll_help_down(&mut self, content_height: usize) {
+    pub const fn scroll_help_down(&mut self, content_height: usize) {
         if self.help_scroll_offset < content_height.saturating_sub(1) {
             self.help_scroll_offset += 1;
         }
@@ -198,14 +179,12 @@ mod tests {
     #[test]
     fn test_app_new_initializes_buffer() {
         let app = App::new();
-        // Buffer may have content from persisted state or be empty
         assert!(app.buffer.line_count() >= 1);
     }
 
     #[test]
     fn test_app_new_initializes_context() {
         let app = App::new();
-        // Context should exist (may have variables from persisted state)
         let _ = app.context.extract_variables();
     }
 
@@ -224,18 +203,12 @@ mod tests {
 
     #[test]
     fn test_app_save_state_extracts_buffer() {
-        // Create an app and modify its state
         let mut app = App::new();
         app.buffer.insert_char('a');
         app.buffer.insert_char('b');
 
-        // save_state should not panic
         app.save_state();
     }
-
-    // ============================================================
-    // Clear all tests
-    // ============================================================
 
     #[test]
     fn test_clear_all_clears_buffer() {
@@ -284,10 +257,6 @@ mod tests {
 
         assert_eq!(app.scroll_offset, 0);
     }
-
-    // ============================================================
-    // Scroll offset adjustment tests
-    // ============================================================
 
     #[test]
     fn test_adjust_scroll_cursor_above_visible_area() {
@@ -391,10 +360,6 @@ mod tests {
         // Single line, scroll should stay at 0
         assert_eq!(app.scroll_offset, 0);
     }
-
-    // ============================================================
-    // Help overlay state tests
-    // ============================================================
 
     #[test]
     fn test_app_new_initializes_help_visible_to_false() {
@@ -532,10 +497,6 @@ mod tests {
         assert!(!app.help_visible);
         assert_eq!(app.help_scroll_offset, 0);
     }
-
-    // ============================================================
-    // Horizontal scroll offset adjustment tests
-    // ============================================================
 
     #[test]
     fn test_adjust_horizontal_scroll_cursor_before_visible_area_scrolls_left() {

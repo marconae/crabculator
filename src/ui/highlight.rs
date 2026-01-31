@@ -78,7 +78,6 @@ pub fn tokenize(input: &str) -> Vec<Token> {
         let c = chars[i];
 
         if c.is_whitespace() {
-            // Collect consecutive whitespace
             let start = i;
             while i < chars.len() && chars[i].is_whitespace() {
                 i += 1;
@@ -90,7 +89,6 @@ pub fn tokenize(input: &str) -> Vec<Token> {
         } else if c.is_ascii_digit()
             || (c == '.' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit())
         {
-            // Number: digits, optional decimal point, optional exponent
             let start = i;
             while i < chars.len()
                 && (chars[i].is_ascii_digit()
@@ -108,7 +106,6 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                 chars[start..i].iter().collect::<String>(),
             ));
         } else if c.is_alphabetic() || c == '_' {
-            // Identifier: variable or function name
             let start = i;
             while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
                 i += 1;
@@ -123,7 +120,6 @@ pub fn tokenize(input: &str) -> Vec<Token> {
             tokens.push(Token::new(TokenType::Parenthesis, c.to_string()));
             i += 1;
         } else {
-            // Unknown character - treat as operator
             tokens.push(Token::new(TokenType::Operator, c.to_string()));
             i += 1;
         }
@@ -178,8 +174,6 @@ pub fn token_style(token_type: &TokenType) -> Style {
 pub fn highlight_line(line: &str) -> Vec<Span<'_>> {
     let tokens = tokenize(line);
 
-    // We need to return spans that reference the original line
-    // So we track positions and create spans from slices
     let mut spans = Vec::new();
     let mut pos = 0;
 
@@ -227,18 +221,15 @@ pub fn highlight_line_with_offset(
         let token_start = pos;
         let token_end = pos + token.text.len();
 
-        // Skip tokens entirely before visible area
         if token_end <= horizontal_offset {
             pos = token_end;
             continue;
         }
 
-        // Stop if token starts after visible area
         if token_start >= visible_end {
             break;
         }
 
-        // Calculate visible portion of this token
         let visible_start = token_start.max(horizontal_offset);
         let visible_token_end = token_end.min(visible_end);
 
@@ -256,10 +247,6 @@ pub fn highlight_line_with_offset(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ============================================================
-    // Tokenizer tests - RED phase
-    // ============================================================
 
     #[test]
     fn test_tokenize_simple_number() {
@@ -476,10 +463,6 @@ mod tests {
         assert_eq!(tokens[1].text, "3");
     }
 
-    // ============================================================
-    // Token style tests
-    // ============================================================
-
     #[test]
     fn test_token_style_variable_is_cyan() {
         let style = token_style(&TokenType::Variable);
@@ -516,10 +499,6 @@ mod tests {
         let style = token_style(&TokenType::Whitespace);
         assert_eq!(style.fg, None);
     }
-
-    // ============================================================
-    // Highlight line tests
-    // ============================================================
 
     #[test]
     fn test_highlight_line_simple_expression() {
@@ -588,10 +567,6 @@ mod tests {
         let reconstructed: String = spans.iter().map(|s| s.content.as_ref()).collect();
         assert_eq!(reconstructed, line);
     }
-
-    // ============================================================
-    // Highlight line with offset tests
-    // ============================================================
 
     #[test]
     fn test_highlight_line_with_offset_returns_visible_portion() {
