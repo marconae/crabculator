@@ -7,6 +7,7 @@
 
 use std::time::{Duration, Instant};
 
+use crate::eval::constants::recognize_constant;
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
@@ -63,10 +64,22 @@ pub fn format_value_truncated(value: &str) -> String {
     }
 }
 
+/// Annotates a truncated value with a constant name when recognized.
+///
+/// Returns the value wrapped in parentheses followed by the constant annotation,
+/// or the original truncated value if no constant is recognized.
+fn annotate_with_constant(value: f64, truncated: &str) -> String {
+    recognize_constant(value).map_or_else(
+        || truncated.to_string(),
+        |annotation| format!("({truncated}) {annotation}"),
+    )
+}
+
 /// Formats a `LineResult` for display in the memory pane with truncation.
 ///
 /// Applies truncation to numeric values that exceed 12 characters.
 /// For assignments, only the value portion is truncated, not the variable name.
+/// When a value matches a known constant, the display is annotated.
 ///
 /// # Returns
 /// - `Some(String)` with the formatted (possibly truncated) result for values and assignments
@@ -76,12 +89,14 @@ fn format_result_for_memory_pane(result: &LineResult) -> Option<String> {
     match result {
         LineResult::Value(value) => {
             let formatted = format_value(*value);
-            Some(format_value_truncated(&formatted))
+            let truncated = format_value_truncated(&formatted);
+            Some(annotate_with_constant(*value, &truncated))
         }
         LineResult::Assignment { name, value } => {
             let formatted_value = format_value(*value);
             let truncated_value = format_value_truncated(&formatted_value);
-            Some(format!("{name} = {truncated_value}"))
+            let annotated = annotate_with_constant(*value, &truncated_value);
+            Some(format!("{name} = {annotated}"))
         }
         LineResult::Empty | LineResult::Error(_) => None,
     }
@@ -844,6 +859,12 @@ const HELP_FUNCTION_REFERENCE: &[&str] = &[
     "Constants:",
     "  pi         3.14159...",
     "  e          2.71828...",
+    "  tau        6.28318...",
+    "  phi        1.61803...",
+    "  sqrt2      1.41421...",
+    "  sqrt3      1.73205...",
+    "  ln2        0.69314...",
+    "  ln10       2.30258...",
     "",
 ];
 
@@ -856,7 +877,7 @@ pub fn help_content_lines() -> Vec<&'static str> {
     lines
 }
 
-pub const HELP_CONTENT_HEIGHT: usize = 58;
+pub const HELP_CONTENT_HEIGHT: usize = 64;
 
 /// Calculates the centered area for an overlay of the given dimensions.
 ///

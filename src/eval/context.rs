@@ -16,9 +16,8 @@ pub struct EvalContext {
 impl EvalContext {
     /// Creates a new evaluation context with predefined mathematical constants.
     ///
-    /// The following constants are pre-defined:
-    /// - `pi`: 3.141592653589793 (mathematical constant pi)
-    /// - `e`: 2.718281828459045 (Euler's number)
+    /// Pre-defines all constants from the constants registry (pi, e, tau, phi,
+    /// sqrt2, sqrt3, ln2, ln10).
     #[must_use]
     pub fn new() -> Self {
         let mut ctx = Self::default();
@@ -28,8 +27,9 @@ impl EvalContext {
 
     /// Initializes mathematical constants in the context.
     fn init_constants(&mut self) {
-        self.inner.insert("pi".to_string(), std::f64::consts::PI);
-        self.inner.insert("e".to_string(), std::f64::consts::E);
+        for &(name, value) in crate::eval::constants::MATH_CONSTANTS {
+            self.inner.insert(name.to_string(), value);
+        }
     }
 
     /// Stores a variable with the given name and value.
@@ -149,10 +149,10 @@ mod tests {
     fn test_extract_variables_new_context_contains_constants() {
         let context = EvalContext::new();
         let vars = context.extract_variables();
-        // New context contains predefined constants pi and e
-        assert_eq!(vars.len(), 2);
-        assert!(vars.contains_key("pi"));
-        assert!(vars.contains_key("e"));
+        assert_eq!(vars.len(), crate::eval::constants::MATH_CONSTANTS.len());
+        for &(name, _) in crate::eval::constants::MATH_CONSTANTS {
+            assert!(vars.contains_key(name), "{name} should be predefined");
+        }
     }
 
     #[test]
@@ -194,11 +194,11 @@ mod tests {
     fn test_load_variables_empty_map_preserves_constants() {
         let mut context = EvalContext::new();
         context.load_variables(&HashMap::new());
-        // Loading empty map preserves predefined constants
         let vars = context.extract_variables();
-        assert_eq!(vars.len(), 2); // pi and e
-        assert!(vars.contains_key("pi"));
-        assert!(vars.contains_key("e"));
+        assert_eq!(vars.len(), crate::eval::constants::MATH_CONSTANTS.len());
+        for &(name, _) in crate::eval::constants::MATH_CONSTANTS {
+            assert!(vars.contains_key(name), "{name} should be preserved");
+        }
     }
 
     #[test]
@@ -252,6 +252,72 @@ mod tests {
         assert!(
             (value - std::f64::consts::E).abs() < 1e-15,
             "e should be 2.718281828459045"
+        );
+    }
+
+    #[test]
+    fn test_new_context_has_tau_constant() {
+        let context = EvalContext::new();
+        let tau = context.get_variable("tau");
+        assert!(tau.is_some(), "tau should be predefined");
+        assert!(
+            (tau.unwrap() - std::f64::consts::TAU).abs() < 1e-15,
+            "tau should equal 2*pi"
+        );
+    }
+
+    #[test]
+    fn test_new_context_has_phi_constant() {
+        let context = EvalContext::new();
+        let phi = context.get_variable("phi");
+        assert!(phi.is_some(), "phi should be predefined");
+        assert!(
+            (phi.unwrap() - 1.618_033_988_749_895).abs() < 1e-15,
+            "phi should be the golden ratio"
+        );
+    }
+
+    #[test]
+    fn test_new_context_has_sqrt2_constant() {
+        let context = EvalContext::new();
+        let sqrt2 = context.get_variable("sqrt2");
+        assert!(sqrt2.is_some(), "sqrt2 should be predefined");
+        assert!(
+            (sqrt2.unwrap() - std::f64::consts::SQRT_2).abs() < 1e-15,
+            "sqrt2 should equal square root of 2"
+        );
+    }
+
+    #[test]
+    fn test_new_context_has_sqrt3_constant() {
+        let context = EvalContext::new();
+        let sqrt3 = context.get_variable("sqrt3");
+        assert!(sqrt3.is_some(), "sqrt3 should be predefined");
+        assert!(
+            (sqrt3.unwrap() - 1.732_050_807_568_877_2).abs() < 1e-15,
+            "sqrt3 should equal square root of 3"
+        );
+    }
+
+    #[test]
+    fn test_new_context_has_ln2_constant() {
+        let context = EvalContext::new();
+        let ln2 = context.get_variable("ln2");
+        assert!(ln2.is_some(), "ln2 should be predefined");
+        assert!(
+            (ln2.unwrap() - std::f64::consts::LN_2).abs() < 1e-15,
+            "ln2 should equal natural log of 2"
+        );
+    }
+
+    #[test]
+    fn test_new_context_has_ln10_constant() {
+        let context = EvalContext::new();
+        let ln10 = context.get_variable("ln10");
+        assert!(ln10.is_some(), "ln10 should be predefined");
+        assert!(
+            (ln10.unwrap() - std::f64::consts::LN_10).abs() < 1e-15,
+            "ln10 should equal natural log of 10"
         );
     }
 

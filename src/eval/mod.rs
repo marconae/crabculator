@@ -4,6 +4,7 @@
 //! expressions, managing variable context, and producing results or errors.
 
 pub mod ast;
+pub mod constants;
 pub mod context;
 pub mod error;
 pub mod evaluator;
