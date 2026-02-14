@@ -935,7 +935,7 @@ mod tests {
     #[test]
     fn test_tokenize_hex_literal_uppercase_digits() {
         let tokens = tokenize("0xABCD").unwrap();
-        assert_eq!(tokens, vec![Token::Number(0xABCD as f64)]);
+        assert_eq!(tokens, vec![Token::Number(f64::from(0xABCD))]);
     }
 
     #[test]

@@ -1374,14 +1374,18 @@ mod tests {
     #[test]
     fn test_should_show_error_message_old_edit_returns_true() {
         // Old edit (>= 500ms ago) should show error message
-        let old_time = Instant::now() - Duration::from_millis(600);
+        let old_time = Instant::now()
+            .checked_sub(Duration::from_millis(600))
+            .unwrap();
         assert!(should_show_error_message(Some(old_time)));
     }
 
     #[test]
     fn test_should_show_error_message_exact_boundary() {
         // At exactly 500ms, should show error message (>= check)
-        let boundary_time = Instant::now() - Duration::from_millis(500);
+        let boundary_time = Instant::now()
+            .checked_sub(Duration::from_millis(500))
+            .unwrap();
         // Note: Due to timing, this could be slightly over 500ms, which is fine
         assert!(should_show_error_message(Some(boundary_time)));
     }
@@ -1434,7 +1438,9 @@ mod tests {
         let lines = vec!["5+".to_string()];
         let results = vec![LineResult::Error(EvalError::new("Incomplete expression"))];
 
-        let old_time = Instant::now() - Duration::from_millis(600);
+        let old_time = Instant::now()
+            .checked_sub(Duration::from_millis(600))
+            .unwrap();
         let (output, _) =
             build_visible_input_lines_with_gutter(&lines, &results, 0, 10, 0, 80, Some(old_time));
 

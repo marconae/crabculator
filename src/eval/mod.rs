@@ -801,7 +801,7 @@ mod tests {
         let result = evaluate_expression("2pi", &context);
         if let Ok(v) = result {
             assert!(
-                (v - 2.0 * std::f64::consts::PI).abs() < 1e-10,
+                2.0f64.mul_add(-std::f64::consts::PI, v).abs() < 1e-10,
                 "2pi should be ~6.283, got {v}",
             );
         } else {
@@ -829,7 +829,7 @@ mod tests {
         let result = evaluate_expression("(2+3)pi", &context);
         if let Ok(v) = result {
             assert!(
-                (v - 5.0 * std::f64::consts::PI).abs() < 1e-10,
+                5.0f64.mul_add(-std::f64::consts::PI, v).abs() < 1e-10,
                 "(2+3)pi should be ~5*pi, got {v}",
             );
         } else {
